@@ -3,7 +3,48 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>JCL Employee Scheduler</title>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
+// ---- Persistence features ----
+function appState(){return {contacts,sites,schedule,periodStart:$('periodStart').value,periodEnd:$('periodEnd').value};}
+function saveApp(){localStorage.setItem('jclSchedulerData',JSON.stringify(appState()));show('Schedule saved successfully.');}
+function loadApp(){
+ const raw=localStorage.getItem('jclSchedulerData');
+ if(!raw){show('No saved schedule found.',true);return;}
+ const d=JSON.parse(raw);
+ contacts=d.contacts||contacts; sites=d.sites||[]; schedule=d.schedule||schedule;
+ if(d.periodStart)$('periodStart').value=d.periodStart;
+ if(d.periodEnd)$('periodEnd').value=d.periodEnd;
+ render(); show('Schedule loaded.');
+}
+$('saveData').onclick=saveApp;
+$('loadData').onclick=loadApp;
+$('clearData').onclick=()=>{if(confirm('Clear saved data?')){localStorage.removeItem('jclSchedulerData');show('Saved data cleared.');}};
+$('exportBackup').onclick=()=>{
+ const blob=new Blob([JSON.stringify(appState(),null,2)],{type:'application/json'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='JCL-Schedule.json';a.click();
+};
+$('importBackup').onchange=e=>{
+ const f=e.target.files[0]; if(!f)return;
+ const r=new FileReader();
+ r.onload=()=>{
+   const d=JSON.parse(r.result);
+   contacts=d.contacts||contacts; sites=d.sites||[]; schedule=d.schedule||schedule;
+   if(d.periodStart)$('periodStart').value=d.periodStart;
+   if(d.periodEnd)$('periodEnd').value=d.periodEnd;
+   render(); show('Backup imported.');
+ };
+ r.readAsText(f);
+};
+['addEmployee','addAssignment','updatePeriod','previousPeriod','nextPeriod','importFile'].forEach(id=>{
+ const el=$(id);
+ if(el){
+   el.addEventListener('click',()=>setTimeout(()=>localStorage.setItem('jclSchedulerData',JSON.stringify(appState())),300));
+ }
+});
+window.addEventListener('load',()=>{if(localStorage.getItem('jclSchedulerData')) loadApp();});
+// ---- end persistence ----
+
+</script>
   <style>
     :root{--navy:#102b3e;--teal:#087c75;--bg:#f3f6f8;--line:#d7e0e7;--text:#172634;--muted:#607284;--danger:#a53c31}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text)}header{background:var(--navy);color:#fff;padding:27px max(22px,calc((100% - 1250px)/2))}h1{font-size:25px;margin:0}header p{margin:5px 0 0;color:#c8d9e4}.wrap{max-width:1250px;margin:25px auto;padding:0 22px}.toolbar,.panel{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 2px 10px #142a3d0a}.toolbar{padding:14px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.actions{display:flex;gap:9px;flex-wrap:wrap}button,.file-label{border:0;border-radius:7px;padding:9px 12px;font:inherit;font-weight:700;cursor:pointer;background:var(--teal);color:#fff;text-decoration:none}button.alt,.file-label{background:#eaf0f4;color:#223748}button:disabled{opacity:.5;cursor:not-allowed}.summary{color:var(--muted)}.notice{display:none;margin:16px 0;padding:11px 13px;border-radius:8px;background:#e2f4f1;color:#075a56}.notice.error{background:#fceae7;color:#8c2920}.panel{margin-top:18px;overflow:hidden}.panel-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}.panel h2{margin:0;font-size:17px}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:840px}th{background:#f7f9fb;color:#4d6172;text-align:left;font-size:12px;letter-spacing:.03em;text-transform:uppercase}th,td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}.date{font-weight:800;white-space:nowrap}.team{font-size:12px;color:var(--teal);font-weight:800}.people{display:flex;flex-wrap:wrap;gap:6px}.person{background:#edf7f6;color:#075e5a;border-radius:18px;padding:4px 8px}.person.missing{background:#fff0ed;color:var(--danger)}.empty{color:var(--muted);padding:32px;text-align:center}.contact-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));padding:16px;gap:10px}.contact{border:1px solid var(--line);border-radius:8px;padding:10px}.contact b{display:block}.contact span{font-size:12px;color:var(--muted)}.hint{padding:0 18px 16px;color:var(--muted);font-size:12px}.hidden{display:none}@media(max-width:600px){header{padding:22px}.wrap{padding:0 12px}.toolbar{align-items:stretch}.actions{display:grid;grid-template-columns:1fr 1fr}.actions>*{text-align:center}}
   </style>
@@ -23,6 +64,11 @@
       <label class="file-label" for="importFile">Import Excel</label><input id="importFile" class="hidden" type="file" accept=".xlsx,.xls">
       <button class="alt" id="addEmployee">Add employee</button>
       <button class="alt" id="addAssignment">Add assignment</button>
+      <button class="alt" id="saveData">💾 Save</button>
+      <button class="alt" id="loadData">📂 Load</button>
+      <button class="alt" id="exportBackup">📥 Export</button>
+      <label class="file-label" for="importBackup">📤 Import</label><input id="importBackup" class="hidden" type="file" accept=".json">
+      <button class="alt" id="clearData">🗑 Clear</button>
       <button id="sendAll">Prepare all emails</button>
     </div>
   </section>
@@ -89,5 +135,46 @@ $('updatePeriod').onclick=updateCalendarPeriod;
 $('previousPeriod').onclick=()=>shiftCalendarPeriod(-7);
 $('nextPeriod').onclick=()=>shiftCalendarPeriod(7);
 setCalendarPeriod(parseCalendarDate($('periodStart').value),parseCalendarDate($('periodEnd').value));
+
+// ---- Persistence features ----
+function appState(){return {contacts,sites,schedule,periodStart:$('periodStart').value,periodEnd:$('periodEnd').value};}
+function saveApp(){localStorage.setItem('jclSchedulerData',JSON.stringify(appState()));show('Schedule saved successfully.');}
+function loadApp(){
+ const raw=localStorage.getItem('jclSchedulerData');
+ if(!raw){show('No saved schedule found.',true);return;}
+ const d=JSON.parse(raw);
+ contacts=d.contacts||contacts; sites=d.sites||[]; schedule=d.schedule||schedule;
+ if(d.periodStart)$('periodStart').value=d.periodStart;
+ if(d.periodEnd)$('periodEnd').value=d.periodEnd;
+ render(); show('Schedule loaded.');
+}
+$('saveData').onclick=saveApp;
+$('loadData').onclick=loadApp;
+$('clearData').onclick=()=>{if(confirm('Clear saved data?')){localStorage.removeItem('jclSchedulerData');show('Saved data cleared.');}};
+$('exportBackup').onclick=()=>{
+ const blob=new Blob([JSON.stringify(appState(),null,2)],{type:'application/json'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='JCL-Schedule.json';a.click();
+};
+$('importBackup').onchange=e=>{
+ const f=e.target.files[0]; if(!f)return;
+ const r=new FileReader();
+ r.onload=()=>{
+   const d=JSON.parse(r.result);
+   contacts=d.contacts||contacts; sites=d.sites||[]; schedule=d.schedule||schedule;
+   if(d.periodStart)$('periodStart').value=d.periodStart;
+   if(d.periodEnd)$('periodEnd').value=d.periodEnd;
+   render(); show('Backup imported.');
+ };
+ r.readAsText(f);
+};
+['addEmployee','addAssignment','updatePeriod','previousPeriod','nextPeriod','importFile'].forEach(id=>{
+ const el=$(id);
+ if(el){
+   el.addEventListener('click',()=>setTimeout(()=>localStorage.setItem('jclSchedulerData',JSON.stringify(appState())),300));
+ }
+});
+window.addEventListener('load',()=>{if(localStorage.getItem('jclSchedulerData')) loadApp();});
+// ---- end persistence ----
+
 </script>
 </body></html>
