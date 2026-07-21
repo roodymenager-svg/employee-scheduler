@@ -3,48 +3,13 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>JCL Employee Scheduler</title>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
-// ---- Persistence features ----
-function appState(){return {contacts,sites,schedule,periodStart:$('periodStart').value,periodEnd:$('periodEnd').value};}
-function saveApp(){localStorage.setItem('jclSchedulerData',JSON.stringify(appState()));show('Schedule saved successfully.');}
-function loadApp(){
- const raw=localStorage.getItem('jclSchedulerData');
- if(!raw){show('No saved schedule found.',true);return;}
- const d=JSON.parse(raw);
- contacts=d.contacts||contacts; sites=d.sites||[]; schedule=d.schedule||schedule;
- if(d.periodStart)$('periodStart').value=d.periodStart;
- if(d.periodEnd)$('periodEnd').value=d.periodEnd;
- render(); show('Schedule loaded.');
-}
-$('saveData').onclick=saveApp;
-$('loadData').onclick=loadApp;
-$('clearData').onclick=()=>{if(confirm('Clear saved data?')){localStorage.removeItem('jclSchedulerData');show('Saved data cleared.');}};
-$('exportBackup').onclick=()=>{
- const blob=new Blob([JSON.stringify(appState(),null,2)],{type:'application/json'});
- const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='JCL-Schedule.json';a.click();
-};
-$('importBackup').onchange=e=>{
- const f=e.target.files[0]; if(!f)return;
- const r=new FileReader();
- r.onload=()=>{
-   const d=JSON.parse(r.result);
-   contacts=d.contacts||contacts; sites=d.sites||[]; schedule=d.schedule||schedule;
-   if(d.periodStart)$('periodStart').value=d.periodStart;
-   if(d.periodEnd)$('periodEnd').value=d.periodEnd;
-   render(); show('Backup imported.');
- };
- r.readAsText(f);
-};
-['addEmployee','addAssignment','updatePeriod','previousPeriod','nextPeriod','importFile'].forEach(id=>{
- const el=$(id);
- if(el){
-   el.addEventListener('click',()=>setTimeout(()=>localStorage.setItem('jclSchedulerData',JSON.stringify(appState())),300));
- }
-});
-window.addEventListener('load',()=>{if(localStorage.getItem('jclSchedulerData')) loadApp();});
-// ---- end persistence ----
-
-</script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/firestore.js"></script>
   <style>
     :root{--navy:#102b3e;--teal:#087c75;--bg:#f3f6f8;--line:#d7e0e7;--text:#172634;--muted:#607284;--danger:#a53c31}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text)}header{background:var(--navy);color:#fff;padding:27px max(22px,calc((100% - 1250px)/2))}h1{font-size:25px;margin:0}header p{margin:5px 0 0;color:#c8d9e4}.wrap{max-width:1250px;margin:25px auto;padding:0 22px}.toolbar,.panel{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 2px 10px #142a3d0a}.toolbar{padding:14px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.actions{display:flex;gap:9px;flex-wrap:wrap}button,.file-label{border:0;border-radius:7px;padding:9px 12px;font:inherit;font-weight:700;cursor:pointer;background:var(--teal);color:#fff;text-decoration:none}button.alt,.file-label{background:#eaf0f4;color:#223748}button:disabled{opacity:.5;cursor:not-allowed}.summary{color:var(--muted)}.notice{display:none;margin:16px 0;padding:11px 13px;border-radius:8px;background:#e2f4f1;color:#075a56}.notice.error{background:#fceae7;color:#8c2920}.panel{margin-top:18px;overflow:hidden}.panel-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}.panel h2{margin:0;font-size:17px}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:840px}th{background:#f7f9fb;color:#4d6172;text-align:left;font-size:12px;letter-spacing:.03em;text-transform:uppercase}th,td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}.date{font-weight:800;white-space:nowrap}.team{font-size:12px;color:var(--teal);font-weight:800}.people{display:flex;flex-wrap:wrap;gap:6px}.person{background:#edf7f6;color:#075e5a;border-radius:18px;padding:4px 8px}.person.missing{background:#fff0ed;color:var(--danger)}.empty{color:var(--muted);padding:32px;text-align:center}.contact-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));padding:16px;gap:10px}.contact{border:1px solid var(--line);border-radius:8px;padding:10px}.contact b{display:block}.contact span{font-size:12px;color:var(--muted)}.hint{padding:0 18px 16px;color:var(--muted);font-size:12px}.hidden{display:none}@media(max-width:600px){header{padding:22px}.wrap{padding:0 12px}.toolbar{align-items:stretch}.actions{display:grid;grid-template-columns:1fr 1fr}.actions>*{text-align:center}}
   </style>
@@ -53,14 +18,35 @@ window.addEventListener('load',()=>{if(localStorage.getItem('jclSchedulerData'))
 </style>
 <style>.modal-backdrop.hidden{display:none}</style>
 <style>.calendar-controls{display:flex;align-items:end;gap:7px;flex-wrap:wrap}.calendar-controls label{font-size:11px;font-weight:700;color:#4d6172;text-transform:uppercase;display:grid;gap:3px}.calendar-controls input{border:1px solid #d7e0e7;border-radius:6px;padding:7px;background:#fff;font:inherit;color:#172634}.calendar-controls button{margin:0;padding:8px 10px;font-size:13px}</style>
+<style>.hidden{display:none!important}.auth-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:linear-gradient(135deg,#102b3e,#087c75)}.auth-card{width:min(460px,100%);background:#fff;border-radius:16px;padding:24px;box-shadow:0 18px 50px #07172266}.auth-card h2{margin:0 0 6px;font-size:24px}.auth-card p{margin:0 0 16px;color:#607284}.auth-form{display:grid;gap:10px}.auth-form label{display:grid;gap:6px;font-weight:700;color:#4d6172}.auth-form input{border:1px solid #d7e0e7;border-radius:8px;padding:10px;font:inherit}.auth-divider{margin:16px 0 10px;color:#607284;text-align:center;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.auth-message{margin-top:12px;padding:10px 12px;border-radius:8px;background:#f3f6f8;color:#4d6172}.auth-message.error{background:#fceae7;color:#8c2920}.user-pill{display:flex;align-items:center;gap:8px;color:#4d6172;font-weight:700}.user-pill span{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toolbar .actions{align-items:center}</style>
 </head>
 <body>
+<div id="loginView" class="auth-shell">
+  <div class="auth-card">
+    <h2>Welcome back</h2>
+    <p>Please sign in or create an account to use the employee scheduler.</p>
+    <form id="loginForm" class="auth-form">
+      <label>Email<input id="loginEmail" type="email" required></label>
+      <label>Password<input id="loginPassword" type="password" required></label>
+      <button type="submit">Login</button>
+    </form>
+    <div class="auth-divider">or</div>
+    <form id="registerForm" class="auth-form">
+      <label>Email<input id="registerEmail" type="email" required></label>
+      <label>Password<input id="registerPassword" type="password" minlength="6" required></label>
+      <button type="submit" class="alt">Create account</button>
+    </form>
+    <div id="authMessage" class="auth-message"></div>
+  </div>
+</div>
+<div id="appView" class="hidden">
 <header><h1>JCL Employee Scheduler</h1><p>Plan assignments, check contact coverage, and prepare schedule emails.</p></header>
 <main class="wrap">
   <section class="toolbar">
     <div><b id="period">19–25 July 2026</b><div class="summary" id="summary">Loading the provided schedule…</div></div>
     <div class="calendar-controls"><label>Start <input id="periodStart" type="date" value="2026-07-19"></label><label>End <input id="periodEnd" type="date" value="2026-07-25"></label><button class="alt" id="previousPeriod" title="Move one week earlier">Previous week</button><button class="alt" id="nextPeriod" title="Move one week later">Next week</button><button id="updatePeriod">Update period</button></div>
     <div class="actions">
+      <div class="user-pill"><span id="userEmail"></span><button id="logoutButton" class="alt">Logout</button></div>
       <label class="file-label" for="importFile">Import Excel</label><input id="importFile" class="hidden" type="file" accept=".xlsx,.xls">
       <button class="alt" id="addEmployee">Add employee</button>
       <button class="alt" id="addAssignment">Add assignment</button>
@@ -77,6 +63,7 @@ window.addEventListener('load',()=>{if(localStorage.getItem('jclSchedulerData'))
   <section class="panel"><div class="panel-head"><h2>Employees & contacts</h2><span class="summary" id="contactCount"></span></div><div id="contacts" class="contact-list"></div><p class="hint">Names without an email are highlighted in the schedule and are excluded from email preparation.</p></section>
   <div id="picker" class="modal-backdrop hidden" role="dialog" aria-modal="true"></div>
 </main>
+</div>
 <script>
 /* Local educational/admin tool. Email buttons open the user's mail app for review; they never send mail automatically. */
 const seedContacts={
@@ -95,7 +82,7 @@ function dateInputValue(date){return `${date.getFullYear()}-${String(date.getMon
 function scheduleDayLabel(date){return `${date.toLocaleDateString('en-US',{weekday:'long'})} ${date.getDate()} ${date.toLocaleDateString('en-US',{month:'short'})}`}
 function blankDay(date){return {day:scheduleDayLabel(date),teams:[{name:'Team 1',people:[],site:'',chauffeur:''},{name:'Team 2',people:[],site:'',chauffeur:''},{name:'Team 3',people:[],site:'',chauffeur:''}]}}
 function cloneScheduleDay(day){return JSON.parse(JSON.stringify(day))}
-function setCalendarPeriod(start,end){if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||end<start)return show('Choose a valid start and end date.',true);schedule.forEach(day=>scheduleArchive.set(day.day,cloneScheduleDay(day)));let next=[];for(let current=new Date(start);current<=end;current.setDate(current.getDate()+1)){const label=scheduleDayLabel(current);next.push(scheduleArchive.has(label)?cloneScheduleDay(scheduleArchive.get(label)):blankDay(current))}schedule=next;$('periodStart').value=dateInputValue(start);$('periodEnd').value=dateInputValue(end);$('period').textContent=`${start.toLocaleDateString('en-US',{day:'numeric',month:'long',year:'numeric'})} - ${end.toLocaleDateString('en-US',{day:'numeric',month:'long',year:'numeric'})}`;render()}
+function setCalendarPeriod(start,end){if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||end<start)return show('Choose a valid start and end date.',true);schedule.forEach(day=>scheduleArchive.set(day.day,cloneScheduleDay(day)));let next=[];for(let current=new Date(start);current<=end;current.setDate(current.getDate()+1)){const label=scheduleDayLabel(current);next.push(scheduleArchive.has(label)?cloneScheduleDay(scheduleArchive.get(label)):blankDay(current))}schedule=next;$('periodStart').value=dateInputValue(start);$('periodEnd').value=dateInputValue(end);$('period').textContent=`${start.toLocaleDateString('en-US',{day:'numeric',month:'long',year:'numeric'})} - ${end.toLocaleDateString('en-US',{day:'numeric',month:'long',year:'numeric'})}`;render();queueAutoSave()}
 function updateCalendarPeriod(){setCalendarPeriod(parseCalendarDate($('periodStart').value),parseCalendarDate($('periodEnd').value))}
 function shiftCalendarPeriod(daysToMove){const start=parseCalendarDate($('periodStart').value),end=parseCalendarDate($('periodEnd').value);start.setDate(start.getDate()+daysToMove);end.setDate(end.getDate()+daysToMove);setCalendarPeriod(start,end)}
 function visiblePeople(day){return day.teams.flatMap(t=>t.people.map(p=>({person:p,team:t.name,site:t.site||'',chauffeur:t.chauffeur||''})));}
@@ -107,6 +94,11 @@ function render(){
  window.contactNames=all;$('contacts').innerHTML=all.map((n,i)=>`<div class="contact"><b>${esc(n)}</b><span>${contacts[n]?esc(contacts[n]):'No email recorded'}</span><button class="alt" style="margin-top:8px;padding:6px 9px;font-size:12px" onclick="editEmployeeEmail(${i})">Add / edit email</button></div>`).join('');
 }
 function show(message,error=false){const n=$('notice');n.textContent=message;n.className='notice '+(error?'error':'');n.style.display='block';window.scrollTo({top:0,behavior:'smooth'});}
+function queueAutoSave(){
+  if (window.auth && window.auth.currentUser && typeof window.saveSchedulerDataDebounced === 'function') {
+    window.setTimeout(() => window.saveSchedulerDataDebounced(), 250);
+  }
+}
 function emailFor(daysToSend){
  const entries=daysToSend.flatMap(d=>visiblePeople(d).map(x=>({...x,day:d.day}))); const recipients=[...new Set(entries.map(x=>contacts[x.person]).filter(Boolean))];
  if(!recipients.length)return show('No scheduled employees have an email address. Add contact details in the Excel contacts sheet and import it again.',true);
@@ -120,15 +112,15 @@ function prepareDay(i){emailFor([schedule[i]])} $('sendAll').onclick=()=>emailFo
 function openPicker(dayIndex){const day=schedule[dayIndex],teams=day.teams.map(t=>t.name),current=new Set(day.teams.flatMap(t=>t.people)),names=Object.keys(contacts).sort((a,b)=>a.localeCompare(b)),picker=$('picker');picker.classList.remove('hidden');picker.innerHTML=`<div class="modal"><h2>Choose team members</h2><p>${esc(day.day)} — select employees for a team, then save.</p><div class="picker-controls"><label>Team <select id="pickerTeam">${teams.map(t=>`<option>${esc(t)}</option>`).join('')}<option value="__new">New team…</option></select></label></div><div class="member-picker">${names.map((name,index)=>`<label><input type="checkbox" value="${index}" ${current.has(name)?'checked':''}> ${esc(name)}</label>`).join('')}</div><div class="modal-actions"><button class="alt" onclick="closePicker()">Cancel</button><button onclick="savePicker(${dayIndex})">Save team</button></div></div>`;window.pickerNames=names;}
 function closePicker(){$('picker').classList.add('hidden');$('picker').innerHTML=''}
 function savePicker(dayIndex){let teamName=$('pickerTeam').value;if(teamName==='__new'){teamName=prompt('New team name:','Team '+(schedule[dayIndex].teams.length+1));if(!teamName)return}const selected=[...document.querySelectorAll('#picker input:checked')].map(x=>window.pickerNames[Number(x.value)]),day=schedule[dayIndex];let team=day.teams.find(t=>t.name===teamName);if(!team){team={name:teamName,people:[]};day.teams.push(team)}day.teams.forEach(t=>{if(t!==team)t.people=t.people.filter(p=>!selected.includes(p))});team.people=selected;closePicker();render();show(`${selected.length} team member(s) saved for ${day.day}.`)}
-$('addAssignment').onclick=()=>{const day=prompt('Date/day for this assignment (for example: Monday 20 Jul):');if(!day)return;const team=prompt('Team name:','Team 1');if(!team)return;const name=prompt('Employee name (exactly as in contacts):');if(!name)return;contacts[name]??='';let d=schedule.find(x=>x.day===day);if(!d){d={day,teams:[]};schedule.push(d)}let t=d.teams.find(x=>x.name===team);if(!t){t={name:team,people:[]};d.teams.push(t)}t.people.push(name);render();show('Assignment added locally. To keep it in Excel, add the same assignment to the workbook before importing next time.');};
+$('addAssignment').onclick=()=>{const day=prompt('Date/day for this assignment (for example: Monday 20 Jul):');if(!day)return;const team=prompt('Team name:','Team 1');if(!team)return;const name=prompt('Employee name (exactly as in contacts):');if(!name)return;contacts[name]??='';let d=schedule.find(x=>x.day===day);if(!d){d={day,teams:[]};schedule.push(d)}let t=d.teams.find(x=>x.name===team);if(!t){t={name:team,people:[]};d.teams.push(t)}t.people.push(name);render();queueAutoSave();show('Assignment added locally. To keep it in Excel, add the same assignment to the workbook before importing next time.');};
 function openPicker(dayIndex){const day=schedule[dayIndex],teams=day.teams.map(t=>t.name),active=day.teams[0]||{people:[],site:'',chauffeur:''},names=Object.keys(contacts).sort((a,b)=>a.localeCompare(b)),picker=$('picker'),siteChoices=[...new Set([...sites,active.site].filter(Boolean))];picker.classList.remove('hidden');picker.innerHTML=`<div class="modal"><h2>Choose team members</h2><p>${esc(day.day)} -- choose the team, site, chauffeur, and employees.</p><div class="picker-controls"><label>Team <select id="pickerTeam">${teams.map(t=>`<option>${esc(t)}</option>`).join('')}<option value="__new">New team</option></select></label></div><div class="picker-controls"><label>Site <select id="pickerSite"><option value="">Select a site</option>${siteChoices.map(s=>`<option value="${esc(s)}" ${s===active.site?'selected':''}>${esc(s)}</option>`).join('')}<option value="__new">Add a site</option></select></label></div><div class="picker-controls"><label>Chauffeur <select id="pickerChauffeur"><option value="">Select a chauffeur</option>${names.map(n=>`<option value="${esc(n)}" ${n===active.chauffeur?'selected':''}>${esc(n)}</option>`).join('')}</select></label></div><div class="member-picker">${names.map((name,index)=>`<label><input type="checkbox" value="${index}" ${active.people.includes(name)?'checked':''}> ${esc(name)}</label>`).join('')}</div><div class="modal-actions"><button class="alt" onclick="closePicker()">Cancel</button><button onclick="savePicker(${dayIndex})">Save team</button></div></div>`;window.pickerNames=names;picker.querySelector('#pickerTeam').onchange=e=>{const t=day.teams.find(x=>x.name===e.target.value)||{people:[],site:'',chauffeur:''};picker.querySelectorAll('input').forEach(x=>x.checked=t.people.includes(names[Number(x.value)]));picker.querySelector('#pickerSite').value=t.site||'';picker.querySelector('#pickerChauffeur').value=t.chauffeur||''};}
-function savePicker(dayIndex){let teamName=$('pickerTeam').value,site=$('pickerSite').value,chauffeur=$('pickerChauffeur').value;if(teamName==='__new'){teamName=prompt('New team name:','Team '+(schedule[dayIndex].teams.length+1));if(!teamName)return}if(site==='__new'){site=prompt('Site name:');if(!site)return;if(!sites.includes(site))sites.push(site)}const selected=[...document.querySelectorAll('#picker input:checked')].map(x=>window.pickerNames[Number(x.value)]),day=schedule[dayIndex];let team=day.teams.find(t=>t.name===teamName);if(!team){team={name:teamName,people:[],site:'',chauffeur:''};day.teams.push(team)}day.teams.forEach(t=>{if(t!==team)t.people=t.people.filter(p=>!selected.includes(p))});team.people=selected;team.site=site;team.chauffeur=chauffeur;closePicker();render();show(`${selected.length} team member(s), site, and chauffeur saved for ${day.day}.`)}
+function savePicker(dayIndex){let teamName=$('pickerTeam').value,site=$('pickerSite').value,chauffeur=$('pickerChauffeur').value;if(teamName==='__new'){teamName=prompt('New team name:','Team '+(schedule[dayIndex].teams.length+1));if(!teamName)return}if(site==='__new'){site=prompt('Site name:');if(!site)return;if(!sites.includes(site))sites.push(site)}const selected=[...document.querySelectorAll('#picker input:checked')].map(x=>window.pickerNames[Number(x.value)]),day=schedule[dayIndex];let team=day.teams.find(t=>t.name===teamName);if(!team){team={name:teamName,people:[],site:'',chauffeur:''};day.teams.push(team)}day.teams.forEach(t=>{if(t!==team)t.people=t.people.filter(p=>!selected.includes(p))});team.people=selected;team.site=site;team.chauffeur=chauffeur;closePicker();render();queueAutoSave();show(`${selected.length} team member(s), site, and chauffeur saved for ${day.day}.`) }
 function openPicker(dayIndex,teamIndex=0){const day=schedule[dayIndex],teams=day.teams.map(t=>t.name),active=day.teams[teamIndex]||{people:[],site:'',chauffeur:''},names=Object.keys(contacts).sort((a,b)=>a.localeCompare(b)),picker=$('picker'),siteChoices=[...new Set([...sites,...day.teams.map(t=>t.site),active.site].filter(Boolean))];picker.classList.remove('hidden');picker.innerHTML=`<div class="modal"><h2>Assign team members</h2><p>${esc(day.day)} — ${esc(active.name||'New team')}</p><div class="picker-controls"><label>Team <select id="pickerTeam">${teams.map((t,i)=>`<option ${i===teamIndex?'selected':''}>${esc(t)}</option>`).join('')}<option value="__new">New team</option></select></label></div><div class="picker-controls"><label>Site <select id="pickerSite"><option value="">Select a site</option>${siteChoices.map(s=>`<option value="${esc(s)}" ${s===active.site?'selected':''}>${esc(s)}</option>`).join('')}<option value="__new">Add a site</option></select></label></div><div class="picker-controls"><label>Chauffeur <select id="pickerChauffeur"><option value="">Select a chauffeur</option>${names.map(n=>`<option value="${esc(n)}" ${n===active.chauffeur?'selected':''}>${esc(n)}</option>`).join('')}</select></label></div><div class="member-picker">${names.map((name,index)=>`<label><input type="checkbox" value="${index}" ${active.people.includes(name)?'checked':''}> ${esc(name)}</label>`).join('')}</div><div class="modal-actions"><button class="alt" onclick="closePicker()">Cancel</button><button onclick="savePicker(${dayIndex})">Save team</button></div></div>`;window.pickerNames=names;picker.querySelector('#pickerTeam').onchange=e=>{const t=day.teams.find(x=>x.name===e.target.value)||{people:[],site:'',chauffeur:''};picker.querySelectorAll('input').forEach(x=>x.checked=t.people.includes(names[Number(x.value)]));picker.querySelector('#pickerSite').value=t.site||'';picker.querySelector('#pickerChauffeur').value=t.chauffeur||''};}
-function editEmployeeEmail(index){const name=window.contactNames[index],email=prompt(`Email address for ${name}:`,contacts[name]||'');if(email===null)return;if(email.trim()&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))return show('Enter a valid email address, or leave it blank.',true);contacts[name]=email.trim();render();show(`Email address updated for ${name}.`)}
-function addEmployee(){const name=prompt('Employee full name:');if(!name||!name.trim())return;const email=prompt('Employee email address (optional):','');if(email&& !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))return show('Enter a valid email address, or leave it blank.',true);contacts[name.trim()]=email.trim();render();show(`${name.trim()} was added to the employee list.`)}
+function editEmployeeEmail(index){const name=window.contactNames[index],email=prompt(`Email address for ${name}:`,contacts[name]||'');if(email===null)return;if(email.trim()&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))return show('Enter a valid email address, or leave it blank.',true);contacts[name]=email.trim();render();queueAutoSave();show(`Email address updated for ${name}.`)}
+function addEmployee(){const name=prompt('Employee full name:');if(!name||!name.trim())return;const email=prompt('Employee email address (optional):','');if(email&& !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))return show('Enter a valid email address, or leave it blank.',true);contacts[name.trim()]=email.trim();render();queueAutoSave();show(`${name.trim()} was added to the employee list.`)}
 function excelDate(v){if(v instanceof Date)return v; if(typeof v==='number')return new Date(Math.round((v-25569)*86400*1000)); return null}
 function importWorkbook(file){if(!window.XLSX)return show('The Excel import library could not load. Connect to the internet and reload this page, then try again.',true);const r=new FileReader();r.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});if(wb.SheetNames.length<2)throw Error('The workbook needs a schedule sheet and an employee contacts sheet.');const contactRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[1]],{header:1,defval:''});let newContacts={};contactRows.slice(1).forEach(row=>{const name=String(row[0]||'').trim(),email=String(row[1]||'').trim();if(name)newContacts[name]=email});if(!Object.keys(newContacts).length)throw Error('No employee names were found in the second sheet.');contacts={...contacts,...newContacts};
- const grid=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true});const dayRow=grid.findIndex(row=>row.some(x=>/lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(String(x))));if(dayRow<0)throw Error('Could not find weekday headings on the first sheet.');const dateRow=dayRow+1;let imported=[];grid[dayRow].forEach((label,col)=>{if(!/lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(String(label)))return;const date=excelDate(grid[dateRow]?.[col+1])||excelDate(grid[dateRow]?.[col]);const dayLabel=date?date.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'short'}):String(label);let people=[];for(let row=dateRow+2;row<grid.length;row++){const val=String(grid[row]?.[col]||'').trim();if(newContacts[val]!==undefined||contacts[val]!==undefined)people.push(val)}if(people.length)imported.push({day:dayLabel,teams:[{name:'Imported team',people:[...new Set(people)]}]})});if(imported.length)schedule=imported;render();show(`Imported ${Object.keys(newContacts).length} employee contact record(s) and ${imported.length||schedule.length} scheduled day(s).`)}catch(err){show('Import failed: '+err.message,true)}};r.readAsArrayBuffer(file)}
+ const grid=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true});const dayRow=grid.findIndex(row=>row.some(x=>/lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(String(x))));if(dayRow<0)throw Error('Could not find weekday headings on the first sheet.');const dateRow=dayRow+1;let imported=[];grid[dayRow].forEach((label,col)=>{if(!/lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(String(label)))return;const date=excelDate(grid[dateRow]?.[col+1])||excelDate(grid[dateRow]?.[col]);const dayLabel=date?date.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'short'}):String(label);let people=[];for(let row=dateRow+2;row<grid.length;row++){const val=String(grid[row]?.[col]||'').trim();if(newContacts[val]!==undefined||contacts[val]!==undefined)people.push(val)}if(people.length)imported.push({day:dayLabel,teams:[{name:'Imported team',people:[...new Set(people)]}]})});if(imported.length)schedule=imported;render();queueAutoSave();show(`Imported ${Object.keys(newContacts).length} employee contact record(s) and ${imported.length||schedule.length} scheduled day(s).`)}catch(err){show('Import failed: '+err.message,true)}};r.readAsArrayBuffer(file)}
 $('importFile').onchange=e=>{if(e.target.files[0])importWorkbook(e.target.files[0]);e.target.value=''};
 $('addEmployee').onclick=addEmployee;
 $('updatePeriod').onclick=updateCalendarPeriod;
@@ -136,45 +128,8 @@ $('previousPeriod').onclick=()=>shiftCalendarPeriod(-7);
 $('nextPeriod').onclick=()=>shiftCalendarPeriod(7);
 setCalendarPeriod(parseCalendarDate($('periodStart').value),parseCalendarDate($('periodEnd').value));
 
-// ---- Persistence features ----
 function appState(){return {contacts,sites,schedule,periodStart:$('periodStart').value,periodEnd:$('periodEnd').value};}
-function saveApp(){localStorage.setItem('jclSchedulerData',JSON.stringify(appState()));show('Schedule saved successfully.');}
-function loadApp(){
- const raw=localStorage.getItem('jclSchedulerData');
- if(!raw){show('No saved schedule found.',true);return;}
- const d=JSON.parse(raw);
- contacts=d.contacts||contacts; sites=d.sites||[]; schedule=d.schedule||schedule;
- if(d.periodStart)$('periodStart').value=d.periodStart;
- if(d.periodEnd)$('periodEnd').value=d.periodEnd;
- render(); show('Schedule loaded.');
-}
-$('saveData').onclick=saveApp;
-$('loadData').onclick=loadApp;
-$('clearData').onclick=()=>{if(confirm('Clear saved data?')){localStorage.removeItem('jclSchedulerData');show('Saved data cleared.');}};
-$('exportBackup').onclick=()=>{
- const blob=new Blob([JSON.stringify(appState(),null,2)],{type:'application/json'});
- const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='JCL-Schedule.json';a.click();
-};
-$('importBackup').onchange=e=>{
- const f=e.target.files[0]; if(!f)return;
- const r=new FileReader();
- r.onload=()=>{
-   const d=JSON.parse(r.result);
-   contacts=d.contacts||contacts; sites=d.sites||[]; schedule=d.schedule||schedule;
-   if(d.periodStart)$('periodStart').value=d.periodStart;
-   if(d.periodEnd)$('periodEnd').value=d.periodEnd;
-   render(); show('Backup imported.');
- };
- r.readAsText(f);
-};
-['addEmployee','addAssignment','updatePeriod','previousPeriod','nextPeriod','importFile'].forEach(id=>{
- const el=$(id);
- if(el){
-   el.addEventListener('click',()=>setTimeout(()=>localStorage.setItem('jclSchedulerData',JSON.stringify(appState())),300));
- }
-});
-window.addEventListener('load',()=>{if(localStorage.getItem('jclSchedulerData')) loadApp();});
-// ---- end persistence ----
+window.appState=appState;
 
 </script>
 </body></html>
