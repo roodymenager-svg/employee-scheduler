@@ -81,14 +81,14 @@ let contacts={...seedContacts};
 let sites=[];
 let schedule=days.map(day=>({day,teams:[{name:'Team 1',people:['Kachemide Lubin','Petterson Barthelus'],site:'',chauffeur:''},{name:'Team 2',people:['Alfredo'],site:'',chauffeur:''},{name:'Team 3',people:['Belanda Joseph','Oumar Konate'],site:'',chauffeur:''}]}));
 let scheduleArchive=new Map();
-function render(){
+window.render = function (){
  const assigned=new Set(schedule.flatMap(visiblePeople).map(x=>x.person)); const withEmail=[...assigned].filter(n=>contacts[n]).length;
  $('summary').textContent=`${schedule.length} scheduled days · ${assigned.size} assigned employees · ${withEmail} have an email address`;
  $('schedule').innerHTML=`<div class="table-wrap"><table><thead><tr><th>Date</th><th>Assignments</th><th>Actions</th></tr></thead><tbody>${schedule.map((d,i)=>`<tr><td class="date">${esc(d.day)}</td><td>${d.teams.map((t,teamIndex)=>`<div style="margin-bottom:12px"><span class="team">${esc(t.name)}</span><div style="font-size:12px;color:#607284;margin:3px 0 6px">Site: ${esc(t.site||'Not set')} &nbsp;·&nbsp; Chauffeur: ${esc(t.chauffeur||'Not set')}</div><div class="people">${t.people.map(p=>`<span class="person ${contacts[p]?'':'missing'}" title="${contacts[p]?esc(contacts[p]):'No email on file'}">${esc(p)}</span>`).join('')}</div><button class="alt" style="margin-top:7px;padding:6px 9px;font-size:12px" onclick="openPicker(${i},${teamIndex})">Assign team members</button></div>`).join('')}</td><td><div class="row-actions"><button class="alt" onclick="prepareDay(${i})">Prepare email</button></div></td></tr>`).join('')}</tbody></table></div>`;
  const all=Object.keys(contacts).sort((a,b)=>a.localeCompare(b));$('contactCount').textContent=`${all.filter(n=>contacts[n]).length} email addresses`;
  window.contactNames=all;$('contacts').innerHTML=all.map((n,i)=>`<div class="contact"><b>${esc(n)}</b><span>${contacts[n]?esc(contacts[n]):'No email recorded'}</span><button class="alt" style="margin-top:8px;padding:6px 9px;font-size:12px" onclick="editEmployeeEmail(${i})">Add / edit email</button></div>`).join('');
 }
-function queueAutoSave(){
+window.queueAutoSave = function (){
   if (window.auth && window.auth.currentUser && typeof window.saveSchedulerDataDebounced === 'function') {
     window.setTimeout(() => window.saveSchedulerDataDebounced(), 250);
   }
