@@ -20,8 +20,10 @@ window.esc = function(s) {
 };
 
 window.parseCalendarDate = function(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return new Date(NaN);
     const [y, m, d] = value.split('-').map(Number);
-    return new Date(y, m - 1, d);
+    const date = new Date(y, m - 1, d);
+    return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d ? date : new Date(NaN);
 };
 
 window.dateInputValue = function(date) {
@@ -29,7 +31,7 @@ window.dateInputValue = function(date) {
 };
 
 window.scheduleDayLabel = function(date) {
-    return `${date.toLocaleDateString('en-US',{weekday:'long'})} ${date.getDate()} ${date.toLocaleDateString('en-US',{month:'short'})}`;
+    return date.toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'short' });
 };
 
 window.show = function(message, error = false) {

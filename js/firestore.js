@@ -20,7 +20,7 @@ async function saveSchedulerData() {
   };
 
   await userDoc.set(payload, { merge: true });
-  show('Schedule saved to Firestore.');
+  show('Horaire enregistré dans Firestore.');
 }
 
 async function loadSchedulerData() {
@@ -31,7 +31,7 @@ async function loadSchedulerData() {
     const snapshot = await userDoc.get();
     if (!snapshot.exists) {
       render();
-      show('No saved scheduler data yet. Your changes will be stored automatically.');
+      show("Aucune donnée enregistrée pour l'instant. Vos changements seront sauvegardés automatiquement.");
       return;
     }
 
@@ -39,12 +39,13 @@ async function loadSchedulerData() {
     contacts = data.contacts || contacts;
     sites = data.sites || [];
     schedule = data.schedule || schedule;
+    rebuildScheduleArchive();
     if (data.periodStart) $('periodStart').value = data.periodStart;
     if (data.periodEnd) $('periodEnd').value = data.periodEnd;
     render();
-    show('Scheduler data loaded from Firestore.');
+    show('Données du planificateur chargées depuis Firestore.');
   } catch (error) {
-    show(`Unable to load scheduler data: ${error.message}`, true);
+    show(`Impossible de charger les données du planificateur : ${error.message}`, true);
   }
 }
 
@@ -53,7 +54,7 @@ async function saveSchedulerDataDebounced() {
   try {
     await saveSchedulerData();
   } catch (error) {
-    show(`Unable to save scheduler data: ${error.message}`, true);
+    show(`Impossible d'enregistrer les données du planificateur : ${error.message}`, true);
   }
 }
 
@@ -80,11 +81,22 @@ function bindFirestoreAutosave() {
   const clearButton = $('clearData');
   if (clearButton) {
     clearButton.onclick = async () => {
-      if (!confirm('Clear saved data?')) return;
+      if (!confirm('Effacer les données enregistrées ?')) return;
       const userDoc = getUserDocRef();
       if (!userDoc) return;
       await userDoc.delete();
-      show('Saved data cleared from Firestore.');
+      contacts = { ...seedContacts };
+      sites = [];
+      const start = parseCalendarDate($('periodStart').value);
+      const end = parseCalendarDate($('periodEnd').value);
+      schedule = [];
+      scheduleArchive = new Map();
+      for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+        schedule.push(blankDay(new Date(date)));
+      }
+      rebuildScheduleArchive();
+      render();
+      show('Données enregistrées effacées de Firestore.');
     };
   }
 
@@ -111,13 +123,14 @@ function bindFirestoreAutosave() {
           contacts = data.contacts || contacts;
           sites = data.sites || [];
           schedule = data.schedule || schedule;
+          rebuildScheduleArchive();
           if (data.periodStart) $('periodStart').value = data.periodStart;
           if (data.periodEnd) $('periodEnd').value = data.periodEnd;
           render();
           await saveSchedulerData();
-          show('Backup imported and saved to Firestore.');
+          show('Sauvegarde importée et enregistrée dans Firestore.');
         } catch (error) {
-          show(`Backup import failed: ${error.message}`, true);
+          show(`Échec de l'importation de la sauvegarde : ${error.message}`, true);
         }
       };
       reader.readAsText(file);

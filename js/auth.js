@@ -41,7 +41,7 @@ function initAuthUI() {
       event.preventDefault();
       const email = document.getElementById('loginEmail').value.trim();
       const password = document.getElementById('loginPassword').value;
-      setAuthMessage('Signing in…');
+      setAuthMessage('Connexion en cours…');
       try {
         await signIn(email, password);
       } catch (error) {
@@ -55,7 +55,7 @@ function initAuthUI() {
       event.preventDefault();
       const email = document.getElementById('registerEmail').value.trim();
       const password = document.getElementById('registerPassword').value;
-      setAuthMessage('Creating account…');
+      setAuthMessage('Création du compte…');
       try {
         await signUp(email, password);
       } catch (error) {
@@ -78,13 +78,13 @@ function initAuthUI() {
 function handleAuthState(user) {
   if (!user) {
     showAuthView(true);
-    setAuthMessage('Please sign in to access the scheduler.');
+    setAuthMessage('Veuillez vous connecter pour accéder au planificateur.');
     document.getElementById('userEmail').textContent = '';
     return;
   }
 
   showAuthView(false);
-  document.getElementById('userEmail').textContent = user.email || 'Signed in';
+  document.getElementById('userEmail').textContent = user.email || 'Connecté';
   setAuthMessage('');
   loadSchedulerData();
 }

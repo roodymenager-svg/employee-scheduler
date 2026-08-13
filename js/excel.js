@@ -1,3 +1,51 @@
-window.excelDate = function(v){if(v instanceof Date)return v; if(typeof v==='number')return new Date(Math.round((v-25569)*86400*1000)); return null};
-window.importWorkbook = function(file){if(!window.XLSX)return show('The Excel import library could not load. Connect to the internet and reload this page, then try again.',true);const r=new FileReader();r.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});if(wb.SheetNames.length<2)throw Error('The workbook needs a schedule sheet and an employee contacts sheet.');const contactRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[1]],{header:1,defval:''});let newContacts={};contactRows.slice(1).forEach(row=>{const name=String(row[0]||'').trim(),email=String(row[1]||'').trim();if(name)newContacts[name]=email});if(!Object.keys(newContacts).length)throw Error('No employee names were found in the second sheet.');contacts={...contacts,...newContacts}; const grid=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true}); const dayRow=grid.findIndex(row=>row.some(x=>/lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(String(x))));if(dayRow<0)throw Error('Could not find weekday headings on the first sheet.');const dateRow=dayRow+1;let imported=[];grid[dayRow].forEach((label,col)=>{if(!/lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(String(label)))return;const date=excelDate(grid[dateRow]?.[col+1])||excelDate(grid[dateRow]?.[col]);const dayLabel=date?date.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'short'}):String(label);let people=[];for(let row=dateRow+2;row<grid.length;row++){const val=String(grid[row]?.[col]||'').trim();if(newContacts[val]!==undefined||contacts[val]!==undefined)people.push(val)}if(people.length)imported.push({day:dayLabel,teams:[{name:'Imported team',people:[...new Set(people)]}]})});if(imported.length)schedule=imported;render();queueAutoSave();show(`Imported ${Object.keys(newContacts).length} employee contact record(s) and ${imported.length||schedule.length} scheduled day(s).`)}catch(err){show(t("importFailed") + " " + err.message, true);}};r.readAsArrayBuffer(file)}
+window.excelDate = function(value) {
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(Math.round((value - 25569) * 86400 * 1000));
+  return null;
+};
 
+window.importWorkbook = function(file) {
+  if (!window.XLSX) return show("La bibliothèque d'importation Excel n'a pas pu être chargée. Connectez-vous à Internet, rechargez la page et réessayez.", true);
+  const reader = new FileReader();
+  reader.onload = event => {
+    try {
+      const workbook = XLSX.read(event.target.result, { type: 'array', cellDates: true });
+      if (workbook.SheetNames.length < 2) throw Error("Le classeur doit contenir une feuille d'horaire et une feuille de coordonnées des employés.");
+      const contactRows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[1]], { header: 1, defval: '' });
+      const newContacts = {};
+      contactRows.slice(1).forEach(row => {
+        const name = String(row[0] || '').trim();
+        const email = String(row[1] || '').trim();
+        if (name) newContacts[name] = email;
+      });
+      if (!Object.keys(newContacts).length) throw Error("Aucun nom d'employé n'a été trouvé dans la deuxième feuille.");
+      contacts = { ...contacts, ...newContacts };
+
+      const grid = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '', raw: true });
+      const weekdayPattern = /lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i;
+      const dayRow = grid.findIndex(row => row.some(cell => weekdayPattern.test(String(cell))));
+      if (dayRow < 0) throw Error("Impossible de trouver les en-têtes des jours dans la première feuille.");
+      const dateRow = dayRow + 1;
+      const imported = [];
+      grid[dayRow].forEach((label, column) => {
+        if (!weekdayPattern.test(String(label))) return;
+        const date = excelDate(grid[dateRow]?.[column + 1]) || excelDate(grid[dateRow]?.[column]);
+        const dayLabel = date ? date.toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'short' }) : String(label);
+        const people = [];
+        for (let row = dateRow + 2; row < grid.length; row += 1) {
+          const value = String(grid[row]?.[column] || '').trim();
+          if (newContacts[value] !== undefined || contacts[value] !== undefined) people.push(value);
+        }
+        if (people.length) imported.push({ day: dayLabel, teams: [{ name: 'Équipe importée', people: [...new Set(people)], site: '', chauffeur: '' }] });
+      });
+      if (imported.length) schedule = imported;
+      rebuildScheduleArchive();
+      render();
+      queueAutoSave();
+      show(`${Object.keys(newContacts).length} coordonnée(s) d'employé et ${imported.length || schedule.length} journée(s) planifiée(s) importées.`);
+    } catch (error) {
+      show(`${t('importFailed')} ${error.message}`, true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+};
