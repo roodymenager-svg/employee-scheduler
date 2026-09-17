@@ -27,19 +27,17 @@
   <header><div class="brand"><div class="logo" role="img" aria-label="Logo JCL"></div><div><h1>Répertoire des employés</h1><p>Coordonnées et gestion des employés JCL / COMPTEC</p></div></div><div class="header-actions"><a href="scheduler-clean.html">Retour au planificateur</a><details class="page-settings"><summary>Paramètres</summary><div class="page-settings-list"><a href="scheduler-clean.html?settings=email">Modifier l’adresse de connexion</a><a href="scheduler-clean.html?settings=password">Modifier le mot de passe</a><button id="logoutButton" type="button">Déconnexion</button></div></details></div></header>
   <main>
     <div id="notice" class="notice" role="status"></div>
-    <section class="toolbar"><div><h2 id="employeeCount">Employés</h2><p>Les modifications sont synchronisées avec le planificateur.</p></div><div class="tools"><input id="employeeSearch" class="search" type="search" placeholder="Rechercher un employé" autocomplete="off"><button id="createLeaderAccess" class="secondary" type="button">Créer un accès chef d'équipe</button><button id="addEmployee" class="primary" type="button">Ajouter un employé</button></div></section>
+    <section class="toolbar"><div><h2 id="employeeCount">Employés</h2><p>Les modifications sont synchronisées avec le planificateur.</p></div><div class="tools"><input id="employeeSearch" class="search" type="search" placeholder="Rechercher un employé" autocomplete="off"><button id="addEmployee" class="primary" type="button">Ajouter un employé</button></div></section>
     <section class="panel"><div id="loading" class="loading">Chargement sécurisé du répertoire…</div><div id="directory" class="table-wrap hidden"></div></section>
   </main>
   <footer class="app-footer">© <span class="copyright-year"></span> JCL Multiservices. Tous droits réservés.</footer>
   <dialog id="employeeDialog"><form id="employeeForm" class="dialog-body"><h2 id="dialogTitle">Ajouter un employé</h2><p id="dialogDescription">Ajoutez les coordonnées du nouvel employé.</p><div class="form"><label>Nom complet<input id="employeeName" required></label><label>Adresse courriel (facultative)<input id="employeeEmail" type="email"></label><label>Numéro de téléphone (facultatif)<input id="employeePhone" type="tel" placeholder="514 555-0123"></label></div><div class="dialog-actions"><button id="cancelEmployee" class="secondary" type="button">Annuler</button><button class="primary" type="submit">Enregistrer</button></div></form></dialog>
-  <dialog id="leaderAccessDialog"><form id="leaderAccessForm" class="dialog-body"><h2>Créer un accès chef d'équipe</h2><p>Choisissez un employé ayant une adresse courriel. Firebase créera ou mettra à jour son compte, puis lui enverra un courriel pour définir son mot de passe.</p><div class="form"><label>Employé<select id="leaderAccessEmployee" required></select></label></div><p id="leaderAccessStatus" class="muted"></p><div class="dialog-actions"><button id="cancelLeaderAccess" class="secondary" type="button">Annuler</button><button id="saveLeaderAccess" class="primary" type="submit">Créer l'accès</button></div></form></dialog>
   <script type="module">
     import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
-    import {initializeAuth,onAuthStateChanged,signOut,sendPasswordResetEmail,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
+    import {initializeAuth,onAuthStateChanged,signOut,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
     import {getFirestore,doc,onSnapshot,setDoc} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
-    import {getFunctions,httpsCallable} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-functions.js';
     const firebaseConfig={apiKey:'AIzaSyDxUvzlTgr0VGcIbC-fUCBsxSGGF_bz0MU',authDomain:'jcl-new-employer-schedule.firebaseapp.com',projectId:'jcl-new-employer-schedule',storageBucket:'jcl-new-employer-schedule.firebasestorage.app',messagingSenderId:'284561617913',appId:'1:284561617913:web:1368ae7db1e125bfc4c328'};
-    const app=initializeApp(firebaseConfig),auth=initializeAuth(app,{persistence:browserLocalPersistence}),db=getFirestore(app),shared=doc(db,'schedulerData','shared'),functions=getFunctions(app,'northamerica-northeast1'),createTeamLeaderAccount=httpsCallable(functions,'createTeamLeaderAccount');
+    const app=initializeApp(firebaseConfig),auth=initializeAuth(app,{persistence:browserLocalPersistence}),db=getFirestore(app),shared=doc(db,'schedulerData','shared');
     const $=id=>document.getElementById(id),escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     let currentUser=null,remote=null,state=null,unsubscribe=null,editingIndex=null,inactivityTimer=null;
     const INACTIVITY_MS=10*60*1000;
@@ -67,13 +65,6 @@
       $('employeeName').value=employee?.name||'';$('employeeEmail').value=employee?.email||'';$('employeePhone').value=employee?.phone||'';
       $('employeeDialog').showModal();
     }
-    function openLeaderAccess(){
-      const eligible=(state?.employees||[]).map((employee,index)=>({employee,index})).filter(({employee})=>employee.email);
-      if(!eligible.length)return notify('Ajoutez d’abord une adresse courriel à un employé.',true);
-      $('leaderAccessEmployee').innerHTML=eligible.map(({employee,index})=>`<option value="${index}">${escapeHtml(employee.name)} — ${escapeHtml(employee.email)}</option>`).join('');
-      $('leaderAccessStatus').textContent='';
-      $('leaderAccessDialog').showModal();
-    }
     $('employeeForm').addEventListener('submit',async event=>{
       event.preventDefault();
       const name=$('employeeName').value.trim(),email=$('employeeEmail').value.trim(),phone=$('employeePhone').value.trim();
@@ -99,8 +90,7 @@
       (state.schedule||[]).forEach(clean);Object.values(state.archive||{}).forEach(clean);
       await save('Employé supprimé du répertoire et des horaires.');
     });
-    $('leaderAccessForm').addEventListener('submit',async event=>{event.preventDefault();const employee=state?.employees?.[Number($('leaderAccessEmployee').value)],button=$('saveLeaderAccess'),status=$('leaderAccessStatus');if(!employee?.email)return;button.disabled=true;status.textContent='Création sécurisée du compte…';try{const result=await createTeamLeaderAccount({email:employee.email,displayName:employee.name});await sendPasswordResetEmail(auth,employee.email);status.textContent=`Accès ${result.data.created?'créé':'mis à jour'}. Un courriel de création de mot de passe a été envoyé à ${employee.email}.`;notify('Accès chef d’équipe configuré avec succès.');}catch(error){console.error(error);const message=error?.message||'';status.textContent=message.includes('permission-denied')?'Votre compte ne possède pas l’autorisation administrateur.':message.includes('failed-precondition')?'Le nom et le courriel doivent correspondre à la fiche de l’employé.':`Impossible de créer l’accès (${error.code||'erreur inconnue'}).`;}finally{button.disabled=false}});
-    $('employeeSearch').addEventListener('input',render);$('addEmployee').addEventListener('click',()=>openEmployee());$('createLeaderAccess').addEventListener('click',openLeaderAccess);$('cancelLeaderAccess').addEventListener('click',()=>$('leaderAccessDialog').close());$('cancelEmployee').addEventListener('click',()=>{$('employeeDialog').close();editingIndex=null});$('logoutButton').addEventListener('click',()=>signOut(auth));
+    $('employeeSearch').addEventListener('input',render);$('addEmployee').addEventListener('click',()=>openEmployee());$('cancelEmployee').addEventListener('click',()=>{$('employeeDialog').close();editingIndex=null});$('logoutButton').addEventListener('click',()=>signOut(auth));
     document.querySelectorAll('.copyright-year').forEach(item=>item.textContent=new Date().getFullYear());
     onAuthStateChanged(auth,user=>{
       clearTimeout(inactivityTimer);if(unsubscribe){unsubscribe();unsubscribe=null}currentUser=user;
