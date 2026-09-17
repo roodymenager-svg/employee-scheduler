@@ -3,11 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=scheduler-clean.html">
-  <title>Planificateur JCL</title>
-  <script>location.replace('scheduler-clean.html');</script>
+  <meta http-equiv="refresh" content="0; url=dashboard.html">
+  <title>Tableau de bord JCL</title>
+  <style>body{margin:0;color:#607284;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}main{min-height:calc(100vh - 65px);display:grid;place-items:center}.app-footer{padding:24px 18px;text-align:center;font-size:12px;border-top:1px solid #d7e0e7}</style>
+  <script>location.replace('dashboard.html');</script>
 </head>
 <body>
-  <p>Ouverture du <a href="scheduler-clean.html">planificateur JCL</a>…</p>
+  <main><p>Ouverture du <a href="dashboard.html">tableau de bord JCL</a>…</p></main>
+  <footer class="app-footer">© <span class="copyright-year"></span> JCL Multiservices. Tous droits réservés.</footer>
+  <script>document.querySelectorAll('.copyright-year').forEach(item=>item.textContent=new Date().getFullYear())</script>
 </body>
 </html>

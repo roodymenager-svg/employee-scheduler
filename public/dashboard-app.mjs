@@ -1,0 +1,109 @@
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
+import {initializeAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
+import {getFirestore,doc,onSnapshot} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+import {isoLocal,parseLocal,lastCompletedWeek,weekDates,weekMetrics,workforceMetrics,topDriversForWeek,topEmployeesByHoursForWeek,reportMetricsForDates,topDriversForReportDates,topEmployeesByHoursForDates,changePercent} from './dashboard-metrics.mjs?v=20260916-dashboard4';
+
+// This dashboard page reads the existing JCL document. It never writes to Firebase.
+const firebaseConfig={apiKey:'AIzaSyDxUvzlTgr0VGcIbC-fUCBsxSGGF_bz0MU',authDomain:'jcl-new-employer-schedule.firebaseapp.com',projectId:'jcl-new-employer-schedule',storageBucket:'jcl-new-employer-schedule.firebasestorage.app',messagingSenderId:'284561617913',appId:'1:284561617913:web:1368ae7db1e125bfc4c328'};
+const firebaseApp=initializeApp(firebaseConfig),auth=initializeAuth(firebaseApp,{persistence:browserLocalPersistence}),db=getFirestore(firebaseApp),shared=doc(db,'schedulerData','shared');
+const $=id=>document.getElementById(id),esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const groupNames={jcl:'JCL',comptec:'COMPTEC',both:'JCL et COMPTEC'};
+let currentUser=null,unsubscribe=null,remote=null,week=lastCompletedWeek(),month=new Date(),events=[],inactivityTimer=null;
+month.setDate(1);
+function calendarKey(){return `jcl-dashboard-dates-v1-${currentUser.uid}`}
+function loadEvents(){try{const stored=JSON.parse(localStorage.getItem(calendarKey())||'[]');events=Array.isArray(stored)?stored.filter(item=>/^\d{4}-\d{2}-\d{2}$/.test(item.date)&&typeof item.title==='string'):[]}catch{events=[]}}
+function saveEvents(){localStorage.setItem(calendarKey(),JSON.stringify(events));renderCalendar()}
+function setNotice(message,error=false){const node=$('dataNotice');node.textContent=message;node.className='notice'+(error?' error':'')}
+function setView(view){$('loading').classList.toggle('hidden',view!=='loading');$('loginView').classList.toggle('hidden',view!=='login');$('dashboard').classList.toggle('hidden',view!=='dashboard');$('logoutButton').classList.toggle('hidden',view!=='dashboard');$('schedulerLink').classList.toggle('hidden',view!=='dashboard')}
+function resetInactivity(){if(!currentUser)return;clearTimeout(inactivityTimer);inactivityTimer=setTimeout(()=>signOut(auth),10*60*1000)}
+['pointerdown','keydown','touchstart','scroll'].forEach(name=>document.addEventListener(name,resetInactivity,{passive:true}));
+function weekLabel(start){const dates=weekDates(start);return `${parseLocal(dates[0]).toLocaleDateString('fr-CA',{day:'numeric',month:'short'})} – ${parseLocal(dates[6]).toLocaleDateString('fr-CA',{day:'numeric',month:'short',year:'numeric'})}`}
+function monthDates(date){const year=date.getFullYear(),month=date.getMonth(),days=new Date(year,month+1,0).getDate();return Array.from({length:days},(_,index)=>isoLocal(new Date(year,month,index+1,12)))}
+function monthWeekBuckets(date){const buckets=new Map;monthDates(date).forEach(value=>{const day=parseLocal(value),start=new Date(day);start.setDate(day.getDate()-day.getDay());const key=isoLocal(start);if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(value)});return [...buckets.values()].map((dates,index)=>({dates,label:`Sem. ${index+1}`,range:`${parseLocal(dates[0]).toLocaleDateString('fr-CA',{day:'numeric',month:'short'})} – ${parseLocal(dates.at(-1)).toLocaleDateString('fr-CA',{day:'numeric',month:'short'})}`}))}
+function previousCompletedMonth(){const value=new Date();value.setDate(1);value.setMonth(value.getMonth()-1);value.setHours(12,0,0,0);return value}
+const hours=minutes=>`${(minutes/60).toLocaleString('fr-CA',{maximumFractionDigits:1})} h`;
+const km=value=>`${value.toLocaleString('fr-CA',{maximumFractionDigits:1})} km`;
+function changeLabel(current,previous,incomplete){const percent=changePercent(current,previous);if(percent===null)return 'Comparaison indisponible (semaine précédente à 0)';const magnitude=Math.abs(percent).toLocaleString('fr-CA',{maximumFractionDigits:1}),direction=percent>0?'en hausse':percent<0?'en baisse':'stable',base=incomplete?'Variation provisoire':'Variation';return `${base} : ${direction}${percent===0?'':` de ${magnitude} %`}`}
+function renderTrend(target,current,previous,label){const value=$(target),difference=current-previous,direction=difference>0?'positive':difference<0?'negative':'stable',description=difference>0?'en hausse':difference<0?'en baisse':'stable',bars=difference>0?[7,10,13,17,22,27,32]:difference<0?[32,27,22,17,13,10,7]:[18,19,18,19,18,19,18],curve=difference>0?'M5 30 C28 29 55 19 84 4':difference<0?'M5 4 C28 14 55 23 84 29':'M5 16 C31 16 58 16 84 16',markerId=`trendArrow-${target}`;let chart=value.parentElement.querySelector(`[data-trend-for="${target}"]`);if(!chart){chart=document.createElement('span');chart.className='trend-chart';chart.dataset.trendFor=target;value.insertAdjacentElement('afterend',chart)}chart.className=`trend-chart ${direction}`;chart.setAttribute('role','img');chart.setAttribute('aria-label',`${label} : tendance ${description} par rapport à la période précédente`);chart.innerHTML=`<svg viewBox="0 0 94 52" aria-hidden="true"><defs><marker id="${markerId}" markerWidth="5.5" markerHeight="5.5" refX="4.5" refY="2.75" orient="auto"><path d="M0,0 L5.5,2.75 L0,5.5 Z" fill="currentColor"/></marker></defs>${bars.map((height,index)=>`<rect x="${5+index*12}" y="${48-height}" width="8" height="${height}" rx="1" fill="currentColor" opacity="${.76+index*.035}"/>`).join('')}<path d="${curve}" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" marker-end="url(#${markerId})"/></svg>`}
+function renderCompany(group,current,previous){
+  $(group+'Hours').textContent=hours(current.minutes);$(group+'Km').textContent=km(current.km);
+  renderTrend(group+'Hours',current.minutes,previous.minutes,'Heures travaillées');renderTrend(group+'Km',current.km,previous.km,'Distance parcourue');
+  $(group+'HoursChange').textContent=`${changeLabel(current.minutes,previous.minutes,current.incomplete>0||previous.incomplete>0)} · avant : ${hours(previous.minutes)}`;
+  $(group+'KmChange').textContent=`${changeLabel(current.km,previous.km,current.incomplete>0||previous.incomplete>0)} · avant : ${km(previous.km)}`;
+  $(group+'Complete').textContent=current.teams?`${current.incomplete} équipe(s) à compléter sur ${current.teams} · ${current.missingHours} heure(s) manquante(s) · ${current.missingKm} distance(s) manquante(s)`:'Aucune équipe planifiée pour cette semaine.';
+}
+function curvePath(points){let path=`M ${points[0][0]} ${points[0][1]}`;for(let index=1;index<points.length;index++){const [x0,y0]=points[index-1],[x1,y1]=points[index],step=(x1-x0)/3;path+=` C ${x0+step} ${y0} ${x1-step} ${y1} ${x1} ${y1}`}return path}
+function renderBars(current){
+  const jcl=current.jcl.daily,comptec=current.comptec.daily,totals=jcl.map((value,index)=>value+comptec[index]),peak=Math.max(...jcl,...comptec,60),labels=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  $('dailyBars').innerHTML=totals.map((minutes,index)=>`<div class="bar-col"><b>${esc(hours(minutes))}</b><div class="bar-pair" aria-hidden="true"><div class="bar-part jcl" style="height:${Math.round(jcl[index]/peak*115)}px" title="JCL : ${esc(hours(jcl[index]))}"></div><div class="bar-part comptec" style="height:${Math.round(comptec[index]/peak*115)}px" title="COMPTEC : ${esc(hours(comptec[index]))}"></div></div><span>${labels[index]}</span></div>`).join('');
+  $('dailyBars').setAttribute('aria-label',labels.map((label,index)=>`${label} : JCL ${hours(jcl[index])}, COMPTEC ${hours(comptec[index])}, total ${hours(totals[index])}`).join('; '));
+  const renderArea=(target,values,company,color,gradientId)=>{const width=560,left=35,right=530,top=16,bottom=153,max=Math.max(...values,60),plotHeight=bottom-top,points=values.map((minutes,index)=>[Math.round(left+(right-left)*index/6),Math.round(bottom-minutes/max*plotHeight)]),line=curvePath(points),area=`${line} L ${right} ${bottom} L ${left} ${bottom} Z`,axis=[0,.5,1].map(fraction=>{const y=Math.round(bottom-fraction*plotHeight);return `<line x1="${left}" y1="${y}" x2="${right}" y2="${y}" stroke="#d7e0e7" stroke-dasharray="3 4"/><text x="3" y="${y+4}" font-size="11" fill="#607284">${esc(hours(max*fraction))}</text>`}).join('');$(target).innerHTML=`<svg viewBox="0 0 ${width} 160" role="img" aria-label="Heures travaillées ${company} par jour"><title>Évolution quotidienne des heures ${company}</title><defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".36"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>${axis}<path d="${area}" fill="url(#${gradientId})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="3"/>${points.map(([x,y],index)=>`<circle cx="${x}" cy="${y}" r="3" fill="${color}"><title>${labels[index]} : ${company} ${hours(values[index])}</title></circle>`).join('')}</svg>`};
+  renderArea('dailyAreaJcl',jcl,'JCL','#2f5ca8','jclFade');
+  renderArea('dailyAreaComptec',comptec,'COMPTEC','#176d68','comptecFade');
+  $('dailySummary').textContent=labels.map((label,index)=>`${label} : JCL ${hours(jcl[index])}, COMPTEC ${hours(comptec[index])}, total ${hours(totals[index])}`).join(' · ');
+}
+function renderAttention(current){const rows=[];for(const key of ['jcl','comptec']){const item=current[key];if(item.incomplete)rows.push(`<div class="attention"><b>${groupNames[key]}</b> : ${item.incomplete} équipe(s) avec des données manquantes (${item.missingHours} horaire(s), ${item.missingKm} distance(s)).</div>`)}$('attentionList').innerHTML=rows.length?rows.join(''):'<div class="empty">Aucun champ manquant pour les équipes planifiées cette semaine.</div>'}
+function renderDriverStar(result){
+  $('driverStarName').textContent=result.leaders.length?result.leaders.map(driver=>driver.name).join(' et '):'Aucun chauffeur disponible';
+  $('driverStarKm').textContent=result.leaders.length?km(result.leaders[0].km):'—';
+  $('driverStarNote').textContent=result.missing?`${result.missing} équipe(s) sans chauffeur ou distance valide; classement provisoire.`:'Distances attribuées une fois par équipe et par jour.';
+}
+function renderEmployeeHoursStar(result){
+  $('employeeHoursStarName').textContent=result.leaders.length?result.leaders.map(employee=>employee.name).join(' et '):'Aucun horaire complété';
+  $('employeeHoursStarTotal').textContent=result.leaders.length?hours(result.leaders[0].minutes):'—';
+  $('employeeHoursStarNote').textContent=result.missing?`${result.missing} horaire(s) incomplet(s); classement provisoire.`:'Cumul calculé à partir des heures enregistrées dans les rapports de la semaine.';
+}
+function renderMonthlyCompany(group,current,previous){
+  $(group+'MonthHours').textContent=hours(current.minutes);$(group+'MonthKm').textContent=km(current.km);
+  renderTrend(group+'MonthHours',current.minutes,previous.minutes,'Heures travaillées du mois');renderTrend(group+'MonthKm',current.km,previous.km,'Distance parcourue du mois');
+  $(group+'MonthHoursChange').textContent=`${changeLabel(current.minutes,previous.minutes,current.incomplete>0||previous.incomplete>0)} · mois précédent : ${hours(previous.minutes)}`;
+  $(group+'MonthKmChange').textContent=`${changeLabel(current.km,previous.km,current.incomplete>0||previous.incomplete>0)} · mois précédent : ${km(previous.km)}`;
+  $(group+'MonthComplete').textContent=current.teams?`${current.incomplete} équipe(s) à compléter sur ${current.teams} · ${current.missingHours} horaire(s) manquant(s) · ${current.missingKm} distance(s) manquante(s)`:'Aucun rapport enregistré pour ce mois.';
+}
+function renderMonthlyArea(target,values,buckets,company,color,gradientId){const width=700,left=45,right=675,top=18,bottom=150,labelY=178,max=Math.max(...values,60),plotHeight=bottom-top,denominator=Math.max(values.length-1,1),points=values.map((minutes,index)=>[Math.round(left+(right-left)*index/denominator),Math.round(bottom-minutes/max*plotHeight)]),line=curvePath(points),area=`${line} L ${points.at(-1)[0]} ${bottom} L ${points[0][0]} ${bottom} Z`,axis=[0,.5,1].map(fraction=>{const y=Math.round(bottom-fraction*plotHeight);return `<line x1="${left}" y1="${y}" x2="${right}" y2="${y}" stroke="#d7e0e7" stroke-dasharray="3 4"/><text x="3" y="${y+4}" font-size="11" fill="#607284">${esc(hours(max*fraction))}</text>`}).join(''),labels=buckets.map((bucket,index)=>`<text x="${points[index][0]}" y="${labelY}" text-anchor="middle" font-size="11" fill="#607284"><title>${esc(bucket.range)}</title>${esc(bucket.label)}</text>`).join('');$(target).innerHTML=`<svg viewBox="0 0 ${width} 190" role="img" aria-label="Heures ${company} par semaine pour le mois"><title>Évolution hebdomadaire ${company}</title><defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".4"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>${axis}<path d="${area}" fill="url(#${gradientId})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="3"/>${points.map(([x,y],index)=>`<circle cx="${x}" cy="${y}" r="4" fill="${color}"><title>${esc(buckets[index].range)} : ${company} ${hours(values[index])}</title></circle>`).join('')}${labels}</svg>`}
+function renderMonthlyAreas(date){const buckets=monthWeekBuckets(date),metrics=buckets.map(bucket=>reportMetricsForDates(remote.reports,bucket.dates));renderMonthlyArea('monthAreaJcl',metrics.map(item=>item.jcl.minutes),buckets,'JCL','#2f5ca8','monthJclFade');renderMonthlyArea('monthAreaComptec',metrics.map(item=>item.comptec.minutes),buckets,'COMPTEC','#176d68','monthComptecFade')}
+function renderMonthlyPerformance(){
+  const selected=previousCompletedMonth(),before=new Date(selected);before.setMonth(before.getMonth()-1);
+  const dates=monthDates(selected),previousDates=monthDates(before),current=reportMetricsForDates(remote.reports,dates),previous=reportMetricsForDates(remote.reports,previousDates);
+  $('monthPeriodLabel').textContent=selected.toLocaleDateString('fr-CA',{month:'long',year:'numeric'});
+  renderMonthlyCompany('jcl',current.jcl,previous.jcl);renderMonthlyCompany('comptec',current.comptec,previous.comptec);renderMonthlyAreas(selected);
+  const driver=topDriversForReportDates(remote.reports,dates);$('monthDriverName').textContent=driver.leaders.length?driver.leaders.map(item=>item.name).join(' et '):'Aucun chauffeur disponible';$('monthDriverKm').textContent=driver.leaders.length?km(driver.leaders[0].km):'—';$('monthDriverNote').textContent=driver.missing?`${driver.missing} rapport(s) sans chauffeur ou distance valide; classement provisoire.`:'Distances cumulées à partir du rapport mensuel.';
+  const employee=topEmployeesByHoursForDates(remote.reports,dates);$('monthEmployeeName').textContent=employee.leaders.length?employee.leaders.map(item=>item.name).join(' et '):'Aucun horaire complété';$('monthEmployeeHours').textContent=employee.leaders.length?hours(employee.leaders[0].minutes):'—';$('monthEmployeeNote').textContent=employee.missing?`${employee.missing} horaire(s) incomplet(s); classement provisoire.`:'Heures cumulées à partir du rapport mensuel.';
+}
+function renderWorkforce(current,previous){
+  $('newEmployees').textContent=current.newEmployees.toLocaleString('fr-CA');
+  $('newEmployeesNote').textContent='Employé(e)s ajoutés avec une date de création durant la semaine affichée.';
+  $('scheduledEmployees').textContent=current.scheduledEmployees.toLocaleString('fr-CA');
+  const difference=current.scheduledEmployees-previous.scheduledEmployees;
+  $('scheduledEmployeesChange').textContent=`${difference===0?'Stable':difference>0?`+${difference}`:`${difference}`} comparativement à la semaine précédente (${previous.scheduledEmployees}).`;
+  $('scheduledEmployeesChange').className=`delta${difference>0?' positive':difference<0?' negative':''}`;
+}
+function renderDashboard(){
+  $('periodLabel').textContent=weekLabel(week);$('newerWeek').disabled=isoLocal(week)>=isoLocal(lastCompletedWeek());
+  if(!remote){setNotice('Aucun rapport en ligne reçu pour le moment.');return}
+  const previous=new Date(week);previous.setDate(previous.getDate()-7);
+  const current=weekMetrics(remote.state,remote.reports,week),before=weekMetrics(remote.state,remote.reports,previous);
+  renderCompany('jcl',current.jcl,before.jcl);renderCompany('comptec',current.comptec,before.comptec);renderBars(current);renderAttention(current);renderDriverStar(topDriversForWeek(remote.state,remote.reports,week));renderEmployeeHoursStar(topEmployeesByHoursForWeek(remote.reports,week));renderWorkforce(workforceMetrics(remote.state,week),workforceMetrics(remote.state,previous));renderMonthlyPerformance();
+  const missing=current.jcl.incomplete+current.comptec.incomplete;
+  setNotice(missing?`Lecture seule des rapports JCL. ${missing} équipe(s) ont des champs manquants : les variations affichées sont provisoires.`:'Lecture seule des rapports JCL. Les variations comparent deux semaines complètes du dimanche au samedi.');
+}
+function renderCalendar(){
+  $('calendarMonth').textContent=month.toLocaleDateString('fr-CA',{month:'long',year:'numeric'});
+  const first=new Date(month);first.setDate(1-first.getDay());const today=isoLocal(new Date());
+  $('calendarGrid').innerHTML=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].map(label=>`<div class="weekday">${label}</div>`).join('')+Array.from({length:42},(_,index)=>{const date=new Date(first);date.setDate(first.getDate()+index);const value=isoLocal(date),other=date.getMonth()!==month.getMonth(),hasEvents=events.some(event=>event.date===value);return `<button class="day${other?' other':''}${value===today?' today':''}${hasEvents?' has-events':''}" type="button" data-date="${value}" aria-label="${esc(date.toLocaleDateString('fr-CA',{day:'numeric',month:'long',year:'numeric'}))}${hasEvents?' : événement enregistré':''}">${date.getDate()}</button>`}).join('');
+  const prefix=isoLocal(month).slice(0,7),visible=events.filter(event=>event.date.startsWith(prefix)).sort((a,b)=>a.date.localeCompare(b.date));
+  $('eventList').innerHTML=visible.length?visible.map(event=>`<div class="event"><div><b>${esc(event.title)}</b><small>${esc(parseLocal(event.date).toLocaleDateString('fr-CA',{day:'numeric',month:'long'}))} · ${esc(groupNames[event.group]||'JCL')}${event.notes?' · '+esc(event.notes):''}</small></div><button class="button danger" type="button" data-delete="${esc(event.id)}">Supprimer</button></div>`).join(''):'<div class="empty">Aucune date enregistrée pour ce mois.</div>';
+}
+$('calendarGrid').addEventListener('click',event=>{const button=event.target.closest('button[data-date]');if(!button)return;$('eventDate').value=button.dataset.date;const selected=parseLocal(button.dataset.date);month=new Date(selected.getFullYear(),selected.getMonth(),1);renderCalendar();$('eventTitle').focus()});
+$('eventForm').addEventListener('submit',event=>{event.preventDefault();if(!currentUser)return;events.push({id:Math.random().toString(36).slice(2)+Date.now().toString(36),date:$('eventDate').value,group:$('eventGroup').value,title:$('eventTitle').value.trim(),notes:$('eventNotes').value.trim()});const selected=parseLocal($('eventDate').value);month=new Date(selected.getFullYear(),selected.getMonth(),1);event.target.reset();saveEvents()});
+$('eventList').addEventListener('click',event=>{const button=event.target.closest('button[data-delete]');if(!button||!confirm('Supprimer cette date importante?'))return;events=events.filter(item=>item.id!==button.dataset.delete);saveEvents()});
+$('previousMonth').addEventListener('click',()=>{month.setMonth(month.getMonth()-1);renderCalendar()});$('nextMonth').addEventListener('click',()=>{month.setMonth(month.getMonth()+1);renderCalendar()});
+$('olderWeek').addEventListener('click',()=>{week.setDate(week.getDate()-7);renderDashboard()});$('newerWeek').addEventListener('click',()=>{if(isoLocal(week)<isoLocal(lastCompletedWeek()))week.setDate(week.getDate()+7);renderDashboard()});
+$('logoutButton').addEventListener('click',()=>signOut(auth));
+$('loginForm').addEventListener('submit',async event=>{event.preventDefault();const button=$('loginButton'),status=$('loginStatus');button.disabled=true;status.textContent='Connexion…';status.className='status';try{await signInWithEmailAndPassword(auth,$('loginEmail').value.trim(),$('loginPassword').value);$('loginPassword').value=''}catch(error){const messages={'auth/invalid-credential':'Adresse courriel ou mot de passe incorrect.','auth/network-request-failed':'Connexion réseau indisponible.','auth/unauthorized-domain':'Ce domaine doit être autorisé dans Firebase avant la connexion.','auth/too-many-requests':'Trop de tentatives. Réessayez plus tard.'};status.textContent=messages[error.code]||`Connexion impossible (${error.code||'erreur inconnue'}).`;status.className='status error'}finally{button.disabled=false}});
+onAuthStateChanged(auth,user=>{
+  clearTimeout(inactivityTimer);if(unsubscribe){unsubscribe();unsubscribe=null}currentUser=user;remote=null;
+  if(!user){events=[];$('userName').textContent='';setView('login');return}
+  $('userName').textContent=user.email||'Compte JCL';loadEvents();renderCalendar();resetInactivity();setView('dashboard');renderDashboard();
+  unsubscribe=onSnapshot(shared,snapshot=>{if(!snapshot.exists()){setNotice('Aucune donnée JCL en ligne n’a été trouvée.',true);return}remote=snapshot.data();renderDashboard()},error=>{console.error(error);setNotice('Lecture des rapports impossible. Vérifiez votre accès Firebase.',true)});
+});
