@@ -35,7 +35,7 @@
   <script type="module">
     import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
     import {initializeAuth,onAuthStateChanged,signOut,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-    import {getFirestore,doc,onSnapshot,setDoc} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+    import {getFirestore,doc,getDoc,onSnapshot,setDoc} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
     const firebaseConfig={apiKey:'AIzaSyDxUvzlTgr0VGcIbC-fUCBsxSGGF_bz0MU',authDomain:'jcl-new-employer-schedule.firebaseapp.com',projectId:'jcl-new-employer-schedule',storageBucket:'jcl-new-employer-schedule.firebasestorage.app',messagingSenderId:'284561617913',appId:'1:284561617913:web:1368ae7db1e125bfc4c328'};
     const app=initializeApp(firebaseConfig),auth=initializeAuth(app,{persistence:browserLocalPersistence}),db=getFirestore(app),shared=doc(db,'schedulerData','shared');
     const $=id=>document.getElementById(id),escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -92,9 +92,11 @@
     });
     $('employeeSearch').addEventListener('input',render);$('addEmployee').addEventListener('click',()=>openEmployee());$('cancelEmployee').addEventListener('click',()=>{$('employeeDialog').close();editingIndex=null});$('logoutButton').addEventListener('click',()=>signOut(auth));
     document.querySelectorAll('.copyright-year').forEach(item=>item.textContent=new Date().getFullYear());
-    onAuthStateChanged(auth,user=>{
+    onAuthStateChanged(auth,async user=>{
       clearTimeout(inactivityTimer);if(unsubscribe){unsubscribe();unsubscribe=null}currentUser=user;
       if(!user){location.replace('dashboard.html');return}
+      const profile=await getDoc(doc(db,'users',user.uid)).catch(()=>null);
+      if(!profile?.exists()||profile.data().role!=='admin'||profile.data().active!==true){location.replace('team-leader.html');return}
       resetInactivity();unsubscribe=onSnapshot(shared,snapshot=>{if(!snapshot.exists()||!snapshot.data().state){notify('Aucune donnée du planificateur trouvée.',true);return}remote=snapshot.data();state=JSON.parse(JSON.stringify(remote.state));if(!Array.isArray(state.employees))state.employees=[];render()},error=>{console.error(error);notify('Impossible de charger le répertoire Firebase.',true)});
     });
   </script>

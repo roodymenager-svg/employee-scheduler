@@ -1,6 +1,6 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import {initializeAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-import {getFirestore,doc,onSnapshot} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+import {getFirestore,doc,getDoc,onSnapshot} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import {isoLocal,parseLocal,lastCompletedWeek,weekDates,weekMetrics,workforceMetrics,topDriversForWeek,topEmployeesByHoursForWeek,reportMetricsForDates,topDriversForReportDates,topEmployeesByHoursForDates,changePercent} from './dashboard-metrics.mjs?v=20260916-dashboard4';
 
 // This dashboard page reads the existing JCL document. It never writes to Firebase.
@@ -128,9 +128,11 @@ $('previousMonth').addEventListener('click',()=>{month.setMonth(month.getMonth()
 $('olderWeek').addEventListener('click',()=>{week.setDate(week.getDate()-7);renderDashboard()});$('newerWeek').addEventListener('click',()=>{if(isoLocal(week)<isoLocal(lastCompletedWeek()))week.setDate(week.getDate()+7);renderDashboard()});
 $('logoutButton').addEventListener('click',()=>signOut(auth));
 $('loginForm').addEventListener('submit',async event=>{event.preventDefault();const button=$('loginButton'),status=$('loginStatus');button.disabled=true;status.textContent='Connexion…';status.className='status';try{await signInWithEmailAndPassword(auth,$('loginEmail').value.trim(),$('loginPassword').value);$('loginPassword').value=''}catch(error){const messages={'auth/invalid-credential':'Adresse courriel ou mot de passe incorrect.','auth/network-request-failed':'Connexion réseau indisponible.','auth/unauthorized-domain':'Ce domaine doit être autorisé dans Firebase avant la connexion.','auth/too-many-requests':'Trop de tentatives. Réessayez plus tard.'};status.textContent=messages[error.code]||`Connexion impossible (${error.code||'erreur inconnue'}).`;status.className='status error'}finally{button.disabled=false}});
-onAuthStateChanged(auth,user=>{
+onAuthStateChanged(auth,async user=>{
   clearTimeout(inactivityTimer);if(unsubscribe){unsubscribe();unsubscribe=null}currentUser=user;remote=null;
   if(!user){events=[];$('userName').textContent='';setView('login');return}
+  const profile=await getDoc(doc(db,'users',user.uid)).catch(()=>null);
+  if(!profile?.exists()||profile.data().role!=='admin'||profile.data().active!==true){await signOut(auth);$('loginStatus').textContent='Ce compte n’a pas accès au portail administrateur.';$('loginStatus').className='status error';return}
   $('userName').textContent=user.email||'Compte JCL';loadEvents();renderCalendar();resetInactivity();setView('dashboard');renderEventReminders();renderDashboard();
   unsubscribe=onSnapshot(shared,snapshot=>{if(!snapshot.exists()){setNotice('Aucune donnée JCL en ligne n’a été trouvée.',true);return}remote=snapshot.data();renderDashboard()},error=>{console.error(error);setNotice('Lecture des rapports impossible. Vérifiez votre accès Firebase.',true)});
 });
