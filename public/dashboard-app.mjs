@@ -63,6 +63,23 @@ function renderEmployeeHoursStar(result){
   $('employeeHoursStarTotal').textContent=result.leaders.length?hours(result.leaders[0].minutes):'—';
   $('employeeHoursStarNote').textContent=result.missing?`${result.missing} horaire(s) incomplet(s); classement provisoire.`:'Cumul calculé à partir des heures enregistrées dans les rapports de la semaine.';
 }
+function leaderScoresForDates(reports,dates){
+  const scores=new Map;
+  dates.forEach(date=>(reports?.[date]?.teams||[]).forEach(team=>{
+    const name=String(team.leader||team.teamLeaderSignature?.name||'').trim();
+    if(!name)return;
+    if(!scores.has(name))scores.set(name,{name,assigned:0,signed:0,adminCompleted:0,pending:0});
+    const item=scores.get(name);item.assigned++;
+    if(team.teamLeaderSignature)item.signed++;
+    else if(team.adminCompletedBeforeLeader)item.adminCompleted++;
+    else item.pending++;
+  }));
+  return [...scores.values()].map(item=>{const finalized=item.signed+item.adminCompleted;return{...item,score:finalized?item.signed/finalized*10:null}}).sort((a,b)=>(b.score??-1)-(a.score??-1)||b.signed-a.signed||a.name.localeCompare(b.name,'fr-CA'));
+}
+function renderLeaderScores(target,reports,dates){
+  const items=leaderScoresForDates(reports,dates),node=$(target);
+  node.innerHTML=items.length?items.map(item=>{const score=item.score===null?'—':item.score.toLocaleString('fr-CA',{minimumFractionDigits:1,maximumFractionDigits:1}),width=item.score===null?0:Math.max(0,Math.min(100,item.score*10));return`<article class="leader-score-row"><div class="leader-score-name"><strong>${esc(item.name)}</strong><small>${item.assigned} affectation(s) · ${item.pending} en attente</small></div><div><div class="leader-score-track" aria-hidden="true"><div class="leader-score-fill" style="width:${width}%"></div></div><span class="leader-score-counts">${item.signed} signé(s) par le TL · ${item.adminCompleted} complété(s) par l’administrateur</span></div><strong class="leader-score-value">${score} / 10</strong></article>`}).join(''):'<div class="leader-score-empty">Aucun chef d’équipe n’est associé aux rapports de cette période.</div>';
+}
 function renderMonthlyCompany(group,current,previous){
   $(group+'MonthHours').textContent=hours(current.minutes);$(group+'MonthKm').textContent=km(current.km);
   renderTrend(group+'MonthHours',current.minutes,previous.minutes,'Heures travaillées du mois');renderTrend(group+'MonthKm',current.km,previous.km,'Distance parcourue du mois');
@@ -77,6 +94,7 @@ function renderMonthlyPerformance(){
   const dates=monthDates(selected),previousDates=monthDates(before),current=reportMetricsForDates(remote.reports,dates),previous=reportMetricsForDates(remote.reports,previousDates);
   $('monthPeriodLabel').textContent=selected.toLocaleDateString('fr-CA',{month:'long',year:'numeric'});
   renderMonthlyCompany('jcl',current.jcl,previous.jcl);renderMonthlyCompany('comptec',current.comptec,previous.comptec);renderMonthlyAreas(selected);
+  renderLeaderScores('monthlyLeaderScores',remote.reports,dates);
   const driver=topDriversForReportDates(remote.reports,dates);$('monthDriverName').textContent=driver.leaders.length?driver.leaders.map(item=>item.name).join(' et '):'Aucun chauffeur disponible';$('monthDriverKm').textContent=driver.leaders.length?km(driver.leaders[0].km):'—';$('monthDriverNote').textContent=driver.missing?`${driver.missing} rapport(s) sans chauffeur ou distance valide; classement provisoire.`:'Distances cumulées à partir du rapport mensuel.';
   const employee=topEmployeesByHoursForDates(remote.reports,dates);$('monthEmployeeName').textContent=employee.leaders.length?employee.leaders.map(item=>item.name).join(' et '):'Aucun horaire complété';$('monthEmployeeHours').textContent=employee.leaders.length?hours(employee.leaders[0].minutes):'—';$('monthEmployeeNote').textContent=employee.missing?`${employee.missing} horaire(s) incomplet(s); classement provisoire.`:'Heures cumulées à partir du rapport mensuel.';
 }
@@ -112,7 +130,7 @@ function renderDashboard(){
   if(!remote){setNotice('Aucun rapport en ligne reçu pour le moment.');return}
   ensureWeeklyHighlightsLayout();ensureCommunicationPanel();const previous=new Date(week);previous.setDate(previous.getDate()-7);
   const current=weekMetrics(remote.state,remote.reports,week),before=weekMetrics(remote.state,remote.reports,previous);
-  renderCompany('jcl',current.jcl,before.jcl);renderCompany('comptec',current.comptec,before.comptec);renderBars(current);renderAttention(current);renderDriverStar(topDriversForWeek(remote.state,remote.reports,week));renderEmployeeHoursStar(topEmployeesByHoursForWeek(remote.reports,week));renderWorkforce(workforceMetrics(remote.state,week),workforceMetrics(remote.state,previous));renderMonthlyPerformance();
+  renderCompany('jcl',current.jcl,before.jcl);renderCompany('comptec',current.comptec,before.comptec);renderBars(current);renderAttention(current);renderDriverStar(topDriversForWeek(remote.state,remote.reports,week));renderEmployeeHoursStar(topEmployeesByHoursForWeek(remote.reports,week));renderWorkforce(workforceMetrics(remote.state,week),workforceMetrics(remote.state,previous));renderLeaderScores('weeklyLeaderScores',remote.reports,dates);renderMonthlyPerformance();
   const missing=current.jcl.incomplete+current.comptec.incomplete;
   setNotice(missing?`Lecture seule des rapports JCL. ${missing} équipe(s) ont des champs manquants : les variations affichées sont provisoires.`:'Lecture seule des rapports JCL. Les variations comparent deux semaines complètes du dimanche au samedi.');
 }
