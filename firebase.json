@@ -10,6 +10,16 @@
   },
   "hosting": {
     "public": "public",
+    "headers": [
+      {
+        "source": "**/*.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }]
+      },
+      {
+        "source": "**/*.mjs",
+        "headers": [{ "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }]
+      }
+    ],
     "ignore": [
       "firebase.json",
       "**/.*",

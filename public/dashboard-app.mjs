@@ -1,6 +1,6 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import {initializeAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-import {getFirestore,doc,getDoc,onSnapshot} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+import {getFirestore,doc,getDocFromServer,onSnapshot} from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import {isoLocal,parseLocal,lastCompletedWeek,weekDates,weekMetrics,workforceMetrics,topDriversForWeek,topEmployeesByHoursForWeek,reportMetricsForDates,topDriversForReportDates,topEmployeesByHoursForDates,changePercent} from './dashboard-metrics.mjs?v=20260916-dashboard4';
 
 // This dashboard page reads the existing JCL document. It never writes to Firebase.
@@ -134,7 +134,7 @@ $('loginForm').addEventListener('submit',async event=>{event.preventDefault();co
 onAuthStateChanged(auth,async user=>{
   clearTimeout(inactivityTimer);if(unsubscribe){unsubscribe();unsubscribe=null}currentUser=user;remote=null;
   if(!user){events=[];$('userName').textContent='';setView('login');return}
-  const profile=await getDoc(doc(db,'users',user.uid)).catch(()=>null);
+  const profile=await getDocFromServer(doc(db,'users',user.uid)).catch(()=>null);
   if(profile?.exists()&&profile.data().role==='teamLeader'&&profile.data().active===true){location.replace('team-leader.html');return}
   if(!profile?.exists()||profile.data().role!=='admin'||profile.data().active!==true){await signOut(auth);$('loginStatus').textContent='Ce compte n’a pas accès au portail administrateur.';$('loginStatus').className='status error';return}
   $('userName').textContent=user.email||'Compte JCL';loadEvents();renderCalendar();resetInactivity();setView('dashboard');renderEventReminders();renderDashboard();
