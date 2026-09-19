@@ -128,6 +128,8 @@ function ensureCommunicationPanel(){
   $('communicationAudience').addEventListener('change',()=>{communicationExcluded.clear();renderCommunicationRecipients()});$('communicationPerson').addEventListener('change',renderCommunicationRecipients);$('communicationGroupPicker').addEventListener('change',renderCommunicationRecipients);$('communicationRecipients').addEventListener('click',event=>{const remove=event.target.closest('[data-exclude-contact]'),reset=event.target.closest('[data-reset-exclusions]');if(reset){communicationExcluded.clear();renderCommunicationRecipients();return}if(remove){communicationExcluded.add(remove.dataset.excludeContact);renderCommunicationRecipients()}});$('prepareCommunicationEmail').addEventListener('click',emailCommunication);$('prepareCommunicationSms').addEventListener('click',smsCommunication);$('closeCommunicationEmail').addEventListener('click',()=>$('communicationEmailDialog').close());['communicationEmailTo','communicationEmailSubject','communicationEmailBody'].forEach(id=>$(id).addEventListener('input',updateEmailDraftLink));populateCommunicationDirectory()
 }
 function renderDashboard(){
+  const welcome=$('adminWelcome'),isLucien=String(currentUser?.email||'').trim().toLowerCase()==='jcl.lucienclaudin@gmail.com';
+  welcome.textContent=isLucien?'Bienvenue Claudin Lucien':'';welcome.classList.toggle('hidden',!isLucien);
   $('periodLabel').textContent=weekLabel(week);$('newerWeek').disabled=isoLocal(week)>=isoLocal(lastCompletedWeek());
   if(!remote){setNotice('Aucun rapport en ligne reçu pour le moment.');return}
   ensureWeeklyHighlightsLayout();ensureCommunicationPanel();const previous=new Date(week),dates=weekDates(week);previous.setDate(previous.getDate()-7);
