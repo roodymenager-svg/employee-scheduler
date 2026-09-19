@@ -157,8 +157,7 @@ onAuthStateChanged(auth,async user=>{
   clearTimeout(inactivityTimer);if(unsubscribe){unsubscribe();unsubscribe=null}if(leaderUnsubscribe){leaderUnsubscribe();leaderUnsubscribe=null}leaderProfiles=[];currentUser=user;remote=null;
   if(!user){events=[];$('userName').textContent='';setView('login');return}
   const profile=await getDocFromServer(doc(db,'users',user.uid)).catch(()=>null);
-  if(profile?.exists()&&profile.data().role==='teamLeader'&&profile.data().active===true){location.replace('team-leader.html');return}
-  if(!profile?.exists()||profile.data().role!=='admin'||profile.data().active!==true){await signOut(auth);$('loginStatus').textContent='Ce compte n’a pas accès au portail administrateur.';$('loginStatus').className='status error';return}
+  if(!profile?.exists()||profile.data().role!=='admin'||profile.data().active!==true){await signOut(auth);$('loginStatus').textContent=profile?.exists()&&profile.data().role==='teamLeader'?'Connexion refusée : ce compte est un compte chef d’équipe. Sélectionnez le portail chef d’équipe.':'Connexion refusée : ce compte n’a pas accès au portail administrateur.';$('loginStatus').className='status error';return}
   leaderUnsubscribe=onSnapshot(collection(db,'users'),snapshot=>{leaderProfiles=snapshot.docs.map(item=>item.data()).filter(item=>item.role==='teamLeader'&&item.active===true);renderCommunicationRecipients()},error=>console.error('Impossible de charger les profils des chefs d’équipe :',error));
   $('userName').textContent=user.email||'Compte JCL';loadEvents();renderCalendar();resetInactivity();setView('dashboard');renderEventReminders();renderDashboard();
   unsubscribe=onSnapshot(shared,snapshot=>{if(!snapshot.exists()){setNotice('Aucune donnée JCL en ligne n’a été trouvée.',true);return}remote=snapshot.data();renderDashboard()},error=>{console.error(error);setNotice('Lecture des rapports impossible. Vérifiez votre accès Firebase.',true)});
