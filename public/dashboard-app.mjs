@@ -64,10 +64,11 @@ function renderEmployeeHoursStar(result){
   $('employeeHoursStarNote').textContent=result.missing?`${result.missing} horaire(s) incomplet(s); classement provisoire.`:'Cumul calculé à partir des heures enregistrées dans les rapports de la semaine.';
 }
 function leaderScoresForDates(reports,dates){
-  const scores=new Map;
+  const normalize=value=>String(value||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').toLocaleLowerCase('fr-CA'),activeEmails=new Set(leaderProfiles.map(profile=>String(profile.email||'').trim().toLocaleLowerCase('fr-CA')).filter(Boolean)),employeeEmailByName=new Map((remote?.state?.employees||[]).map(employee=>[normalize(employee.name),String(employee.email||'').trim().toLocaleLowerCase('fr-CA')])),scores=new Map;
   dates.forEach(date=>(reports?.[date]?.teams||[]).forEach(team=>{
     const name=String(team.leader||team.teamLeaderSignature?.name||'').trim();
-    if(!name)return;
+    const signatureEmail=String(team.teamLeaderSignature?.email||'').trim().toLocaleLowerCase('fr-CA'),directoryEmail=employeeEmailByName.get(normalize(name))||'';
+    if(!name||(!activeEmails.has(signatureEmail)&&!activeEmails.has(directoryEmail)))return;
     if(!scores.has(name))scores.set(name,{name,assigned:0,signed:0,adminCompleted:0,pending:0});
     const item=scores.get(name);item.assigned++;
     if(team.teamLeaderSignature)item.signed++;
@@ -78,7 +79,7 @@ function leaderScoresForDates(reports,dates){
 }
 function renderLeaderScores(target,reports,dates){
   const items=leaderScoresForDates(reports,dates),node=$(target);
-  node.innerHTML=items.length?items.map(item=>{const score=item.score===null?'—':item.score.toLocaleString('fr-CA',{minimumFractionDigits:1,maximumFractionDigits:1}),width=item.score===null?0:Math.max(0,Math.min(100,item.score*10));return`<article class="leader-score-row"><div class="leader-score-name"><strong>${esc(item.name)}</strong><small>${item.assigned} affectation(s) · ${item.pending} en attente</small></div><div><div class="leader-score-track" aria-hidden="true"><div class="leader-score-fill" style="width:${width}%"></div></div><span class="leader-score-counts">${item.signed} signé(s) par le TL · ${item.adminCompleted} complété(s) par l’administrateur</span></div><strong class="leader-score-value">${score} / 10</strong></article>`}).join(''):'<div class="leader-score-empty">Aucun chef d’équipe n’est associé aux rapports de cette période.</div>';
+  node.innerHTML=items.length?items.map(item=>{const score=item.score===null?'—':item.score.toLocaleString('fr-CA',{minimumFractionDigits:1,maximumFractionDigits:1}),width=item.score===null?0:Math.max(0,Math.min(100,item.score*10));return`<article class="leader-score-row"><div class="leader-score-name"><strong>${esc(item.name)}</strong><small>${item.assigned} affectation(s) · ${item.pending} en attente</small></div><div><div class="leader-score-track" aria-hidden="true"><div class="leader-score-fill" style="width:${width}%"></div></div><span class="leader-score-counts">${item.signed} signé(s) par le TL · ${item.adminCompleted} complété(s) par l’administrateur</span></div><strong class="leader-score-value">${score} / 10</strong></article>`}).join(''):'<div class="leader-score-empty">Aucun compte chef d’équipe actif n’est associé aux rapports de cette période.</div>';
 }
 function renderMonthlyCompany(group,current,previous){
   $(group+'MonthHours').textContent=hours(current.minutes);$(group+'MonthKm').textContent=km(current.km);
@@ -158,7 +159,7 @@ onAuthStateChanged(auth,async user=>{
   if(!user){events=[];$('userName').textContent='';setView('login');return}
   const profile=await getDocFromServer(doc(db,'users',user.uid)).catch(()=>null);
   if(!profile?.exists()||profile.data().role!=='admin'||profile.data().active!==true){await signOut(auth);$('loginStatus').textContent='Adresse courriel ou mot de passe incorrect.';$('loginStatus').className='status error';return}
-  leaderUnsubscribe=onSnapshot(collection(db,'users'),snapshot=>{leaderProfiles=snapshot.docs.map(item=>item.data()).filter(item=>item.role==='teamLeader'&&item.active===true);renderCommunicationRecipients()},error=>console.error('Impossible de charger les profils des chefs d’équipe :',error));
+  leaderUnsubscribe=onSnapshot(collection(db,'users'),snapshot=>{leaderProfiles=snapshot.docs.map(item=>item.data()).filter(item=>item.role==='teamLeader'&&item.active===true);renderCommunicationRecipients();if(remote)renderDashboard()},error=>console.error('Impossible de charger les profils des chefs d’équipe :',error));
   $('userName').textContent=user.email||'Compte JCL';loadEvents();renderCalendar();resetInactivity();setView('dashboard');renderEventReminders();renderDashboard();
   unsubscribe=onSnapshot(shared,snapshot=>{if(!snapshot.exists()){setNotice('Aucune donnée JCL en ligne n’a été trouvée.',true);return}remote=snapshot.data();renderDashboard()},error=>{console.error(error);setNotice('Lecture des rapports impossible. Vérifiez votre accès Firebase.',true)});
 });
